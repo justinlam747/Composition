@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ArrowLeft, Diamond, Play, Pause, Repeat2, SkipBack, SkipForward, Plus, Trash2, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Diamond, Play, Pause, Repeat2, SkipBack, SkipForward, Plus, Trash2, ChevronDown, Activity } from 'lucide-react';
 import { BONES, CAMERA_ID, clipSceneTime, type Channel, type Track, type Keyframe, type Ease } from '../core/project';
 import { studio, useStudio } from '../core/store';
 import AnimationTimeline from './AnimationTimeline';
@@ -67,9 +67,65 @@ function VelocityGraph({ keyframe }: { keyframe?: Keyframe }) {
   </div>;
 }
 
+function graphPower(key: Keyframe) {
+  return key.ease === 'ease-in' ? key.easePower ?? 2 : key.ease === 'ease-out' ? -(key.easePower ?? 2) : key.ease === 'smooth' ? 0 : 1;
+}
+
+function velocityAt(key: Keyframe, progress: number) {
+  const power = graphPower(key);
+  if (power === 0) return 6 * progress * (1 - progress);
+  if (power < 0) return (1 - progress) ** (-power - 1);
+  return progress ** (power - 1);
+}
+
+function VelocityGraphTimeline({ track, duration, time, offset, selectedKey }: { track?: Track; duration: number; time: number; offset: number; selectedKey: string | null }) {
+  const graph = useRef<SVGSVGElement>(null);
+  const keys = track?.keys ?? [];
+  const samples = keys.slice(0, -1).flatMap((key, index) => {
+    const next = keys[index + 1];
+    const start = key.time / duration * 100, end = next.time / duration * 100;
+    return Array.from({ length: 19 }, (_, sample) => {
+      const progress = sample / 18;
+      const velocity = Math.min(1, velocityAt(key, progress));
+      return `${(start + (end - start) * progress).toFixed(2)},${(88 - velocity * 68).toFixed(2)}`;
+    }).join(' ');
+  });
+  function update(event: React.PointerEvent<SVGSVGElement>) {
+    if (!graph.current || !keys.length) return;
+    const rect = graph.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const localY = (event.clientY - rect.top) / rect.height * 100;
+    const y = Math.max(.02, Math.min(1, 1 - (localY - 10) / 78));
+    const sceneTime = x * duration;
+    const index = Math.max(0, Math.min(keys.length - 2, keys.findIndex(key => key.time > sceneTime) - 1));
+    const key = keys[index];
+    if (!key) return;
+    const progress = Math.max(.08, Math.min(.92, (sceneTime - key.time) / Math.max(1 / 30, keys[index + 1].time - key.time)));
+    const next = 1 + Math.log(y) / Math.log(progress);
+    studio.patch({ selectedKey: key.id });
+    studio.easePower(next);
+  }
+  return <div className="velocity-mode">
+    <div className="velocity-mode-heading"><strong>Velocity</strong><span>Time stays aligned with the keyframes. Drag any segment to shape its speed.</span></div>
+    <svg ref={graph} className="velocity-mode-graph" viewBox="0 0 100 100" role="img" aria-label="Synchronized velocity graph" onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); update(event); }} onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) update(event); }}>
+      <path className="velocity-mode-grid" d="M0 88H100 M0 54H100 M0 20H100 M0 88V20 M25 88V20 M50 88V20 M75 88V20 M100 88V20" />
+      {samples.map((points, index) => <polyline key={index} className="velocity-mode-line" points={points} />)}
+      {keys.slice(0, -1).map((key, index) => {
+        const next = keys[index + 1], progress = .5;
+        return <circle key={`${key.id}-handle`} className="velocity-mode-handle" cx={(key.time + (next.time - key.time) * progress) / duration * 100} cy={88 - Math.min(1, velocityAt(key, progress)) * 68} r="2.6" />;
+      })}
+      {keys.map(key => <circle key={key.id} className={`velocity-mode-key${key.id === selectedKey ? ' is-selected' : ''}`} cx={key.time / duration * 100} cy="88" r="2.2" />)}
+      <line className="velocity-mode-playhead" x1={Math.max(0, Math.min(100, (time - offset) / duration * 100))} x2={Math.max(0, Math.min(100, (time - offset) / duration * 100))} y1="4" y2="92" />
+    </svg>
+    <div className="velocity-mode-scale"><span>0</span><span>Time</span><span>{duration.toFixed(2)}s</span></div>
+    <input className="velocity-mode-scrubber" type="range" aria-label="Velocity graph playhead" min="0" max={duration} step={1 / 30} value={Math.max(0, Math.min(duration, time - offset))} onChange={event => studio.seek(offset + Number(event.target.value))} />
+  </div>;
+}
+
 export default function Timeline({ collapsed = false }: { collapsed?: boolean }) {
   const s = useStudio();
   const [manualOpen, setManualOpen] = useState(false);
+  const [graphMode, setGraphMode] = useState(false);
   if (collapsed) return null;
   const clip = s.project.clips?.find(value => value.id === s.editingClip);
   if ((s.project.clips?.length || (!s.project.tracks.length && s.objectId !== CAMERA_ID)) && !clip && !manualOpen) return <AnimationTimeline onManual={() => setManualOpen(true)} />;
@@ -98,15 +154,16 @@ export default function Timeline({ collapsed = false }: { collapsed?: boolean })
         <button className={`icon-button ${s.loop ? 'is-on' : ''}`} aria-label="Loop timeline" aria-pressed={s.loop} title="Loop timeline" onClick={() => studio.patch({ loop: !s.loop })}><Repeat2 size={17} /></button>
       </div>
       <div className="timeline-actions"><button className="button key-button" onClick={studio.addKey} disabled={(!s.project.camera && !s.project.objects.some(o => !o.hidden)) || s.playing}><Plus size={15} /> Add key</button></div>
+      <button className={`icon-button graph-mode-button${graphMode ? ' is-on' : ''}`} aria-label="Velocity graph mode" aria-pressed={graphMode} title="Velocity graph mode" onClick={() => setGraphMode(value => !value)}><Activity size={16} /></button>
       {!clip && <label className="duration-label">Duration <select aria-label="Timeline duration" value={s.project.duration} onChange={e => studio.duration(Number(e.target.value))}>{Array.from({ length: 9 }, (_, i) => i + 2).map(n => <option key={n} value={n}>{n} s</option>)}</select><ChevronDown size={11} /></label>}
     </div>
     <div className="timeline-content"><div className="timeline-tracks">
       <div className="timeline-ruler"><div className="ruler-label">{clip ? 'Keyframes' : <select aria-label="Animated object" value={s.objectId} onChange={e => studio.selectObject(e.target.value)}>{s.project.camera && <option value={CAMERA_ID}>Camera</option>}{s.project.objects.filter(o => !o.hidden).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select>}</div><div className="ruler-ticks">{Array.from({ length: Math.floor(duration) + 1 }, (_, i) => <span key={i} style={{ left: `${i / duration * 100}%` }}>{i}<small>s</small></span>)}</div></div>
-      <div className="lanes">{lanes.map(lane => <Lane key={`${lane.target}:${lane.channel}`} {...lane} duration={duration} offset={offset} track={tracks.find(t => t.objectId === s.objectId && t.target === lane.target && t.channel === lane.channel)} />)}</div>
-      <div className="playhead-area"><div className="playhead" style={{ left: `${time / duration * 100}%` }}><span /></div><input className="scrubber" type="range" aria-label="Timeline playhead" min="0" max={duration} step={1 / 30} value={time} onChange={e => studio.seek(offset + Number(e.target.value))} /></div>
+      {graphMode ? <VelocityGraphTimeline track={tracks.find(t => t.objectId === s.objectId && t.target === s.selected && t.channel === s.channel)} duration={duration} time={s.time} offset={offset} selectedKey={s.selectedKey} /> : <><div className="lanes">{lanes.map(lane => <Lane key={`${lane.target}:${lane.channel}`} {...lane} duration={duration} offset={offset} track={tracks.find(t => t.objectId === s.objectId && t.target === lane.target && t.channel === lane.channel)} />)}</div>
+        <div className="playhead-area"><div className="playhead" style={{ left: `${time / duration * 100}%` }}><span /></div><input className="scrubber" type="range" aria-label="Timeline playhead" min="0" max={duration} step={1 / 30} value={time} onChange={e => studio.seek(offset + Number(e.target.value))} /></div></>}
     </div>
     </div>
-    {selectedKey?.ease === 'ease-in' && <VelocityGraph keyframe={selectedKey} />}
-    <div className="timeline-footer"><span>{selectedKey ? `Key at ${selectedKey.time.toFixed(2)}s` : 'Select a key to edit'}</span><div className="key-options"><label><span className="sr-only">Interpolation</span><select disabled={!selectedKey} aria-label="Keyframe interpolation" value={selectedKey?.ease ?? 'smooth'} onChange={e => studio.ease(e.target.value as Ease)}><option value="smooth">Smooth</option><option value="linear">Linear</option><option value="ease-in">Ease in</option><option value="ease-out">Ease out</option></select></label><button className="icon-button" aria-label="Delete selected keyframe" title="Delete selected keyframe" disabled={!selectedKey} onClick={studio.deleteKey}><Trash2 size={15} /></button></div></div>
+    {!graphMode && selectedKey?.ease === 'ease-in' && <VelocityGraph keyframe={selectedKey} />}
+    <div className="timeline-footer"><span>{graphMode ? (selectedKey ? `Key at ${selectedKey.time.toFixed(2)}s` : 'Select a graph handle to edit') : selectedKey ? `Key at ${selectedKey.time.toFixed(2)}s` : 'Select a key to edit'}</span><div className="key-options">{!graphMode && <label><span className="sr-only">Interpolation</span><select disabled={!selectedKey} aria-label="Keyframe interpolation" value={selectedKey?.ease ?? 'smooth'} onChange={e => studio.ease(e.target.value as Ease)}><option value="smooth">Smooth</option><option value="linear">Linear</option><option value="ease-in">Ease in</option><option value="ease-out">Ease out</option></select></label>}<button className="icon-button" aria-label="Delete selected keyframe" title="Delete selected keyframe" disabled={!selectedKey} onClick={studio.deleteKey}><Trash2 size={15} /></button></div></div>
   </section>;
 }
