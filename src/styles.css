@@ -70,7 +70,7 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
 .stage-area { display: flex; position: relative; flex: 1; min-height: 0; padding: 0; }
 .viewport { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--raised); border-radius: 0; }
 .canvas-host { position: absolute; inset: 0; }
-.canvas-host canvas { display: block; width: 100%; height: 100%; touch-action: none; outline-offset: -4px; }
+.canvas-host canvas { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
 .viewport-top { position: absolute; top: 56px; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
 .viewport-top button { pointer-events: auto; }
 .selection-pill { min-height: 30px; display: inline-flex; align-items: center; gap: 6px; background: oklch(100% 0 0 / .9); border: 1px solid oklch(100% 0 0 / .65); color: var(--muted); border-radius: 9px; padding: 5px 9px; font-size: 10px; }
