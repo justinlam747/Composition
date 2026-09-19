@@ -186,8 +186,10 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
 .playhead-area { position: absolute; top: 0; bottom: 0; left: var(--label-width); right: var(--rail-right); pointer-events: none; }
 .playhead { position: absolute; width: 1px; background: var(--accent); top: 0; bottom: 0; z-index: 4; pointer-events: none; }
 .playhead > span { position: absolute; left: -4px; width: 9px; height: 12px; border-radius: 2px 2px 0 0; background: var(--accent); clip-path: polygon(0 0, 100% 0, 100% 65%, 50% 100%, 0 65%); }
-.scrubber { position: absolute; top: 0; left: -8px; width: calc(100% + 16px); margin: 0; height: 31px; pointer-events: auto; opacity: 0; cursor: ew-resize; }
-.scrubber:focus-visible { opacity: .2; }
+.scrubber { position: absolute; top: 0; left: -8px; width: calc(100% + 16px); margin: 0; height: 31px; pointer-events: auto; appearance: none; background: transparent; opacity: 0; cursor: ew-resize; }
+.scrubber:focus-visible { outline: none; opacity: 0; }
+.scrubber::-webkit-slider-runnable-track, .scrubber::-moz-range-track { background: transparent; border: 0; }
+.scrubber::-webkit-slider-thumb, .scrubber::-moz-range-thumb { width: 0; height: 0; border: 0; background: transparent; }
 .timeline-footer { min-height: 34px; flex-shrink: 0; margin-top: auto; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
 .key-options { display: flex; gap: 9px; align-items: center; }
 .key-options select { font-size: 11px; color: var(--muted); }
