@@ -1,0 +1,68 @@
+[
+  {
+    "model": "fal-ai/hunyuan-motion",
+    "id": "drop",
+    "name": "Drop to floor",
+    "input": {
+      "prompt": "A person drops straight down from a short height, lands with both feet in a deep superhero crouch, absorbing the impact with bent knees, then rises to stand upright facing forward.",
+      "duration": 2,
+      "seed": 241,
+      "output_format": "fbx"
+    },
+    "requestId": "01a0b641-03ba-7222-8cf1-3eca3ae29214",
+    "submittedAt": "2026-09-19T15:30:52.681Z",
+    "file": "drop.fbx",
+    "completedAt": "2026-09-19T15:31:06.992Z",
+    "elapsedSeconds": 14.3,
+    "edits": [
+      "Retargeted onto the editor mannequin",
+      "Baked 0.3-second pose transitions",
+      "Editor-authored flight path and web effect",
+      "Baked mesh-based ground contact"
+    ]
+  },
+  {
+    "model": "fal-ai/hunyuan-motion",
+    "id": "web",
+    "name": "Shoot web",
+    "input": {
+      "prompt": "A person standing upright thrusts their right arm diagonally upward and forward with an open palm, like a superhero shooting a web from the wrist. The left arm balances behind. Hold the right arm extended upward.",
+      "duration": 1.5,
+      "seed": 242,
+      "output_format": "fbx"
+    },
+    "requestId": "01a0b641-3ac1-7ea1-bcdf-49332b31dca6",
+    "submittedAt": "2026-09-19T15:31:06.994Z",
+    "file": "web.fbx",
+    "completedAt": "2026-09-19T15:31:21.211Z",
+    "elapsedSeconds": 14.2,
+    "edits": [
+      "Retargeted onto the editor mannequin",
+      "Baked 0.3-second pose transitions",
+      "Editor-authored flight path and web effect",
+      "Baked mesh-based ground contact"
+    ]
+  },
+  {
+    "model": "fal-ai/hunyuan-motion",
+    "id": "swing",
+    "name": "Swing and land",
+    "input": {
+      "prompt": "A person reaches their right arm overhead, hangs from one hand with bent knees and swings their body forward. They release their grip, drop down, land on both feet in a low crouch, then stand up.",
+      "duration": 5.5,
+      "seed": 243,
+      "output_format": "fbx"
+    },
+    "requestId": "01a0b641-7250-71e0-b99d-c4dfbafaca9e",
+    "submittedAt": "2026-09-19T15:31:21.212Z",
+    "file": "swing.fbx",
+    "completedAt": "2026-09-19T15:31:35.383Z",
+    "elapsedSeconds": 14.2,
+    "edits": [
+      "Retargeted onto the editor mannequin",
+      "Baked 0.3-second pose transitions",
+      "Editor-authored flight path and web effect",
+      "Baked mesh-based ground contact"
+    ]
+  }
+]

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Commit After Each Change"
+  short_description: "Commit completed Composition changes after validation"
+  default_prompt: "Use $commit-after-change to verify and commit the completed Composition change."
+
+policy:
+  allow_implicit_invocation: true

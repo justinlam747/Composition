@@ -1,0 +1,151 @@
+diff --git a/node_modules/three/build/three.cjs b/node_modules/three/build/three.cjs
+index 3a1ddbe..d6a0a6b 100644
+--- a/node_modules/three/build/three.cjs
++++ b/node_modules/three/build/three.cjs
+@@ -59499,7 +59499,7 @@ function WebGLAnimation() {
+ 
+ 		stop: function () {
+ 
+-			context.cancelAnimationFrame( requestId );
++			if ( context !== null ) context.cancelAnimationFrame( requestId );
+ 
+ 			isAnimating = false;
+ 
+@@ -73573,11 +73573,14 @@ class WebXRManager extends EventDispatcher {
+ 		 */
+ 		this.setSession = async function ( value ) {
+ 
++			const requestedSession = value;
+ 			session = value;
+ 
+ 			if ( session !== null ) {
+ 
+ 				initialRenderTarget = renderer.getRenderTarget();
++				currentPixelRatio = renderer.getPixelRatio();
++				renderer.getSize( currentSize );
+ 
+ 				session.addEventListener( 'select', onSessionEvent );
+ 				session.addEventListener( 'selectstart', onSessionEvent );
+@@ -73594,8 +73597,7 @@ class WebXRManager extends EventDispatcher {
+ 
+ 				}
+ 
+-				currentPixelRatio = renderer.getPixelRatio();
+-				renderer.getSize( currentSize );
++				if ( session !== requestedSession ) return;
+ 
+ 
+ 				// Check that the browser implements the necessary APIs to use an
+@@ -73683,7 +73685,9 @@ class WebXRManager extends EventDispatcher {
+ 				this.setFoveation( foveation );
+ 
+ 				customReferenceSpace = null;
+-				referenceSpace = await session.requestReferenceSpace( referenceSpaceType );
++				const nextReferenceSpace = await requestedSession.requestReferenceSpace( referenceSpaceType );
++				if ( session !== requestedSession ) return;
++				referenceSpace = nextReferenceSpace;
+ 
+ 				animation.setContext( session );
+ 				animation.start();
+diff --git a/node_modules/three/build/three.module.js b/node_modules/three/build/three.module.js
+index ddec5ac..157d434 100644
+--- a/node_modules/three/build/three.module.js
++++ b/node_modules/three/build/three.module.js
+@@ -36,7 +36,7 @@ function WebGLAnimation() {
+ 
+ 		stop: function () {
+ 
+-			context.cancelAnimationFrame( requestId );
++			if ( context !== null ) context.cancelAnimationFrame( requestId );
+ 
+ 			isAnimating = false;
+ 
+@@ -14110,11 +14110,14 @@ class WebXRManager extends EventDispatcher {
+ 		 */
+ 		this.setSession = async function ( value ) {
+ 
++			const requestedSession = value;
+ 			session = value;
+ 
+ 			if ( session !== null ) {
+ 
+ 				initialRenderTarget = renderer.getRenderTarget();
++				currentPixelRatio = renderer.getPixelRatio();
++				renderer.getSize( currentSize );
+ 
+ 				session.addEventListener( 'select', onSessionEvent );
+ 				session.addEventListener( 'selectstart', onSessionEvent );
+@@ -14131,8 +14134,7 @@ class WebXRManager extends EventDispatcher {
+ 
+ 				}
+ 
+-				currentPixelRatio = renderer.getPixelRatio();
+-				renderer.getSize( currentSize );
++				if ( session !== requestedSession ) return;
+ 
+ 
+ 				// Check that the browser implements the necessary APIs to use an
+@@ -14220,7 +14222,9 @@ class WebXRManager extends EventDispatcher {
+ 				this.setFoveation( foveation );
+ 
+ 				customReferenceSpace = null;
+-				referenceSpace = await session.requestReferenceSpace( referenceSpaceType );
++				const nextReferenceSpace = await requestedSession.requestReferenceSpace( referenceSpaceType );
++				if ( session !== requestedSession ) return;
++				referenceSpace = nextReferenceSpace;
+ 
+ 				animation.setContext( session );
+ 				animation.start();
+diff --git a/node_modules/three/src/renderers/webgl/WebGLAnimation.js b/node_modules/three/src/renderers/webgl/WebGLAnimation.js
+index 6965bcf..f169574 100644
+--- a/node_modules/three/src/renderers/webgl/WebGLAnimation.js
++++ b/node_modules/three/src/renderers/webgl/WebGLAnimation.js
+@@ -28,7 +28,7 @@ function WebGLAnimation() {
+ 
+ 		stop: function () {
+ 
+-			context.cancelAnimationFrame( requestId );
++			if ( context !== null ) context.cancelAnimationFrame( requestId );
+ 
+ 			isAnimating = false;
+ 
+diff --git a/node_modules/three/src/renderers/webxr/WebXRManager.js b/node_modules/three/src/renderers/webxr/WebXRManager.js
+index 03ed5ab..57c5416 100644
+--- a/node_modules/three/src/renderers/webxr/WebXRManager.js
++++ b/node_modules/three/src/renderers/webxr/WebXRManager.js
+@@ -396,11 +396,14 @@ class WebXRManager extends EventDispatcher {
+ 		 */
+ 		this.setSession = async function ( value ) {
+ 
++			const requestedSession = value;
+ 			session = value;
+ 
+ 			if ( session !== null ) {
+ 
+ 				initialRenderTarget = renderer.getRenderTarget();
++				currentPixelRatio = renderer.getPixelRatio();
++				renderer.getSize( currentSize );
+ 
+ 				session.addEventListener( 'select', onSessionEvent );
+ 				session.addEventListener( 'selectstart', onSessionEvent );
+@@ -417,8 +420,7 @@ class WebXRManager extends EventDispatcher {
+ 
+ 				}
+ 
+-				currentPixelRatio = renderer.getPixelRatio();
+-				renderer.getSize( currentSize );
++				if ( session !== requestedSession ) return;
+ 
+ 
+ 				// Check that the browser implements the necessary APIs to use an
+@@ -506,7 +508,9 @@ class WebXRManager extends EventDispatcher {
+ 				this.setFoveation( foveation );
+ 
+ 				customReferenceSpace = null;
+-				referenceSpace = await session.requestReferenceSpace( referenceSpaceType );
++				const nextReferenceSpace = await requestedSession.requestReferenceSpace( referenceSpaceType );
++				if ( session !== requestedSession ) return;
++				referenceSpace = nextReferenceSpace;
+ 
+ 				animation.setContext( session );
+ 				animation.start();

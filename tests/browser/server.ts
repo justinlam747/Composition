@@ -1,0 +1,10 @@
+import { mkdtemp } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createApp } from '../../server/app';
+import { mockProviders } from '../fixtures/providers';
+import { PhoneRelay } from '../../server/phoneRelay';
+const dataDir = await mkdtemp(path.join(os.tmpdir(), 'composition-browser-test-'));
+const phone = new PhoneRelay(); await phone.listen(3004, '127.0.0.1');
+const { app } = await createApp({ dataDir, providers: mockProviders, phone });
+app.listen(3002, '127.0.0.1', () => console.log('TEST ONLY studio server on 3002 (mock providers, no paid calls)'));

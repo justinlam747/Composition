@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Phone camera setup · composition</title>
+<style>@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap');:root{--text:oklch(25% .01 90);--bg:oklch(98% .002 90);--raised:oklch(96% .004 90);--link:oklch(48% .12 44)}body{max-width:720px;margin:48px auto;padding:0 24px;font:16px/1.65 Manrope,sans-serif;color:var(--text);background:var(--bg)}code{font:inherit;background:var(--raised);padding:3px 6px;border-radius:4px}li{margin:12px 0}a{color:var(--link)}</style>
+<h1>Phone camera setup</h1>
+<ol>
+<li>On Windows, stop the existing development server and run <code>npm run dev:phone</code> from the project folder. Open <a href="http://127.0.0.1:5173">the editor</a>.</li>
+<li>On a Mac, open <code>ios/CompositionCamera.xcodeproj</code> in Xcode. Select your signing team and a unique bundle identifier. Connect a compatible iPhone running iOS 17 or later, enable Developer Mode if requested, and build and run on that phone.</li>
+<li>Connect the phone and Windows computer to the same trusted Wi-Fi network. Allow Node.js on private networks if Windows Firewall asks. Only the tracking bridge needs inbound TCP port 3003.</li>
+<li>Open <strong>Phone camera → Pair iPhone</strong> in the editor. Enter a listed computer address and the eight-digit code into the iPhone companion. Allow Camera and Local Network access.</li>
+<li>Hold the phone in landscape. Frame a starting shot in the editor and choose <strong>Set starting pose</strong>. The phone shows the virtual shot returned by the desktop. Move the phone to test the framing, then choose <strong>Record move</strong>.</li>
+<li>Choose <strong>Stop &amp; save</strong>. Open <strong>Animate</strong> to replay the camera block, stretch it to change speed, split it, or edit its keys. The take stops at the next camera block or scene end.</li>
+</ol>
+<p>This companion captures six-axis motion, not video. The phone's camera images stay on the phone. The returned preview is the rendered virtual scene, not an overlay on a real camera feed. Tracking loss or hiding the editor stops the take and saves the captured portion. Set the starting pose again before another take.</p>
+<p>The connection uses a temporary pairing code over your local network. Keep it on trusted Wi-Fi; the bridge is not intended for public hosting. The AI and file APIs remain bound to localhost.</p>
+<p>The native iPhone project requires an Xcode build and physical-device acceptance; Windows cannot validate ARKit hardware tracking.</p>
+</html>
