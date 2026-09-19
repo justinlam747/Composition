@@ -66,11 +66,10 @@ export default function HomePage({ onOpen, onOutput }: { onOpen: () => void; onO
     </aside>
     <main className="home-main">
       <div className="home-content">
-        <div className="library-topbar"><div className="library-filters"><label className="project-search"><Search size={16} /><input aria-label="Search projects" placeholder="Search projects…" value={query} onChange={event => setQuery(event.target.value)} /></label><DropdownMenu className="project-sort" label="Sort projects" items={[
+        <div className="library-topbar"><h1 className="home-title">{collection === 'all' ? 'Projects' : collection === 'recent' ? 'Recent projects' : 'Animated projects'}</h1><div className="library-filters"><label className="project-search"><Search size={16} /><input aria-label="Search projects" placeholder="Search projects…" value={query} onChange={event => setQuery(event.target.value)} /></label><DropdownMenu className="project-sort" label="Sort projects" items={[
           { label: 'Last edited', checked: sort === 'recent', onSelect: () => setSort('recent') },
           { label: 'Name A–Z', checked: sort === 'name', onSelect: () => setSort('name') },
         ]}><ArrowDownWideNarrow size={16} /><span>{sort === 'recent' ? 'Last edited' : 'Name A–Z'}</span><ChevronDown size={13} /></DropdownMenu></div></div>
-        <div className="home-heading"><div><h1>{collection === 'all' ? 'Projects' : collection === 'recent' ? 'Recent projects' : 'Animated projects'}</h1></div></div>
         <section className="project-library" aria-labelledby="saved-projects-title">
           <div className="library-toolbar"><h2 id="saved-projects-title">{collection === 'all' ? 'All projects' : collection === 'recent' ? 'Recently edited' : 'With animation'}</h2></div>
           {error && <div className="home-error" role="alert"><p>{error}</p><button className="button secondary" disabled={!!opening} onClick={() => setRetry(value => value + 1)}>Try again</button></div>}
