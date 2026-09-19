@@ -3,7 +3,7 @@ import { Euler, MathUtils, Matrix4, Quaternion, Vector3 } from 'three';
 export type Vec3 = [number, number, number];
 export type Channel = 'position' | 'rotation' | 'scale';
 export type Ease = 'linear' | 'smooth' | 'ease-in' | 'ease-out';
-export interface Keyframe { id: string; time: number; value: Vec3; ease: Ease; rotationPath?: Vec3[] }
+export interface Keyframe { id: string; time: number; value: Vec3; ease: Ease; easePower?: number; rotationPath?: Vec3[] }
 export const MAX_ROTATION_PATH_POINTS = 4096;
 export interface Track { objectId: string; target: string; channel: Channel; keys: Keyframe[] }
 export interface AnimationAsset {
@@ -130,13 +130,14 @@ export function sampleTrack(track: Track | undefined, time: number, fallback: Ve
   const next = keys.findIndex(k => k.time > time);
   const a = keys[next - 1], b = keys[next];
   let t = (time - a.time) / (b.time - a.time);
-  t = easeProgress(a.ease, t);
+  t = easeProgress(a.ease, t, a.easePower);
   if (track.channel === 'rotation' && b.rotationPath) return pointOnRotationPath(b.rotationPath, t).value;
   // Numeric rotation keys retain their signed angles: 0 -> 360 is a full turn.
   return a.value.map((v, i) => MathUtils.lerp(v, b.value[i], t)) as Vec3;
 }
-export function easeProgress(ease: Ease, t: number) {
-  return ease === 'smooth' ? t * t * (3 - 2 * t) : ease === 'ease-in' ? t * t : ease === 'ease-out' ? 1 - (1 - t) ** 2 : t;
+export function easeProgress(ease: Ease, t: number, power = 2) {
+  const exponent = Math.max(.25, Math.min(4, Number.isFinite(power) ? power : 2));
+  return ease === 'smooth' ? t * t * (3 - 2 * t) : ease === 'ease-in' ? t ** exponent : ease === 'ease-out' ? 1 - (1 - t) ** exponent : t;
 }
 export function sample(project: Project, target: string, channel: Channel, time: number, objectId = HUMANOID_ID): Vec3 {
   const object = project.objects.find(o => o.id === objectId);
@@ -166,7 +167,7 @@ export function rotationPathTo(project: Project, target: string, time: number, o
   const next = track?.keys.find(k => k.time >= at);
   if (next?.rotationPath) {
     let progress = (at - previous.time) / (next.time - previous.time);
-    progress = easeProgress(previous.ease, progress);
+    progress = easeProgress(previous.ease, progress, previous.easePower);
     const point = pointOnRotationPath(next.rotationPath, progress);
     return [...next.rotationPath.slice(0, point.index + 1).map(v => [...v] as Vec3), value];
   }
@@ -282,6 +283,7 @@ export function validateProject(input: unknown): Project {
     for (const key of [...track.keys].sort((a, b) => a.time - b.time)) {
       if (!key || !validId(key.id) || seenKeys.has(key.id) || !Number.isFinite(key.time) || key.time < 0 || key.time > p.duration ||
         Math.abs(key.time * 30 - Math.round(key.time * 30)) > .0001 || key.time <= previous || !['linear', 'smooth', 'ease-in', 'ease-out'].includes(key.ease) ||
+        (key.easePower !== undefined && (!Number.isFinite(key.easePower) || key.easePower < .25 || key.easePower > 4)) ||
         !validVec(key.value) ||
         (track.channel === 'scale' && key.value.some(v => v < .05 || v > 10))) throw new Error('Invalid keyframe values.');
       if (key.rotationPath !== undefined) {

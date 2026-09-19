@@ -37,6 +37,13 @@ describe('fixed rig animation', () => {
     p = putKey(p, 'head', 'rotation', 2, [0, 360, 0]);
     expect(sample(p, 'head', 'rotation', 1)).toEqual([0, 180, 0]);
   });
+  it('uses the editable ease-in power when sampling a keyframe', () => {
+    let p = putKey(makeProject(), 'model', 'position', 0, [0, 0, 0], 'ease-in');
+    p = putKey(p, 'model', 'position', 2, [4, 0, 0], 'linear');
+    p.tracks[0].keys[0].easePower = 4;
+    expect(sample(p, 'model', 'position', 1)[0]).toBeCloseTo(.25);
+    expect(parseProject(JSON.stringify(p)).tracks[0].keys[0].easePower).toBe(4);
+  });
   it('snaps keys to frames and resolves retiming collisions deterministically', () => {
     let p = putKey(makeProject(), 'model', 'position', .99, [1, 0, 0]);
     p = putKey(p, 'model', 'position', 2, [2, 0, 0]);

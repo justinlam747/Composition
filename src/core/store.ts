@@ -171,6 +171,13 @@ export const studio = {
     editKeys(project => ({ ...project, tracks: project.tracks.map(t => ({ ...t, keys: t.keys.map(k => k.id === id ? { ...k, ease } : k) })) }));
     emit({ selectedKey: id });
   },
+  easePower: (power: number) => {
+    if (!state.selectedKey) return;
+    const id = state.selectedKey;
+    const value = Math.max(.25, Math.min(4, power));
+    editKeys(project => ({ ...project, tracks: project.tracks.map(t => ({ ...t, keys: t.keys.map(k => k.id === id ? { ...k, ease: 'ease-in' as const, easePower: value } : k) })) }));
+    emit({ selectedKey: id });
+  },
   demo: () => {
     try { commit(seedIdle(state.project), 'Demo idle loaded. These are editable sample keys, not live AI output.'); emit({ time: 0, objectId: HUMANOID_ID, selected: 'chest', channel: 'rotation', mode: 'rotate', showRig: true, selectionActive: false }); }
     catch (error) { emit({ status: (error as Error).message }); }

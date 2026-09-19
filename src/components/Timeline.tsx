@@ -40,6 +40,33 @@ function Lane({ target, channel, label, track, duration, offset }: { target: str
   </div>;
 }
 
+function VelocityGraph({ keyframe }: { keyframe?: Keyframe }) {
+  const graph = useRef<SVGSVGElement>(null);
+  const power = keyframe?.easePower ?? 2;
+  function update(event: React.PointerEvent<SVGSVGElement>) {
+    if (!keyframe || keyframe.ease !== 'ease-in' || !graph.current) return;
+    const rect = graph.current.getBoundingClientRect();
+    const velocity = Math.max(.02, Math.min(1, 1 - (event.clientY - rect.top) / rect.height));
+    const next = 1 + Math.log(velocity) / Math.log(.5);
+    studio.easePower(next);
+  }
+  const points = Array.from({ length: 25 }, (_, index) => {
+    const t = index / 24;
+    const velocity = t === 0 ? 0 : t ** (power - 1);
+    return `${(t * 100).toFixed(2)},${(42 - velocity * 34).toFixed(2)}`;
+  }).join(' ');
+  const handleY = 42 - (.5 ** (power - 1)) * 34;
+  return <div className="velocity-editor" aria-label="Ease-in velocity graph">
+    <div className="velocity-heading"><span>Velocity graph</span><small>{keyframe?.ease === 'ease-in' ? 'Drag the curve to shape the acceleration' : 'Choose Ease in to edit the curve'}</small></div>
+    <svg ref={graph} className={`velocity-graph${keyframe?.ease === 'ease-in' ? ' is-editable' : ''}`} viewBox="0 0 100 48" role="img" aria-label="Ease-in velocity curve" onPointerDown={event => { if (keyframe?.ease === 'ease-in') { event.currentTarget.setPointerCapture(event.pointerId); update(event); } }} onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) update(event); }}>
+      <path className="velocity-grid" d="M0 42H100 M0 25H100 M0 8H100 M0 42V8 M50 42V8 M100 42V8" />
+      <polyline className="velocity-line" points={points} />
+      {keyframe?.ease === 'ease-in' && <circle className="velocity-handle" cx="50" cy={handleY} r="3" />}
+    </svg>
+    <label className="velocity-power">Ease-in power <input aria-label="Ease-in power" type="range" min=".25" max="4" step=".05" value={power} disabled={keyframe?.ease !== 'ease-in'} onChange={event => studio.easePower(Number(event.target.value))} /><output>{power.toFixed(2)}</output></label>
+  </div>;
+}
+
 export default function Timeline({ collapsed = false }: { collapsed?: boolean }) {
   const s = useStudio();
   const [manualOpen, setManualOpen] = useState(false);
@@ -79,6 +106,7 @@ export default function Timeline({ collapsed = false }: { collapsed?: boolean })
       <div className="playhead-area"><div className="playhead" style={{ left: `${time / duration * 100}%` }}><span /></div><input className="scrubber" type="range" aria-label="Timeline playhead" min="0" max={duration} step={1 / 30} value={time} onChange={e => studio.seek(offset + Number(e.target.value))} /></div>
     </div>
     </div>
+    {selectedKey?.ease === 'ease-in' && <VelocityGraph keyframe={selectedKey} />}
     <div className="timeline-footer"><span>{selectedKey ? `Key at ${selectedKey.time.toFixed(2)}s` : 'Select a key to edit'}</span><div className="key-options"><label><span className="sr-only">Interpolation</span><select disabled={!selectedKey} aria-label="Keyframe interpolation" value={selectedKey?.ease ?? 'smooth'} onChange={e => studio.ease(e.target.value as Ease)}><option value="smooth">Smooth</option><option value="linear">Linear</option><option value="ease-in">Ease in</option><option value="ease-out">Ease out</option></select></label><button className="icon-button" aria-label="Delete selected keyframe" title="Delete selected keyframe" disabled={!selectedKey} onClick={studio.deleteKey}><Trash2 size={15} /></button></div></div>
   </section>;
 }
