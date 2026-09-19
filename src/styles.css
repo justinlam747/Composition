@@ -66,7 +66,6 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
 .menu-toggle.is-checked { background: var(--text); }
 .menu-toggle.is-checked > span { transform: translateX(12px); }
 .menu-separator { height: 1px; background: var(--line); margin: 5px 8px; }
-.scene-menu .menu-redo { display: none; }
 .editor-main { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .stage-area { display: flex; position: relative; flex: 1; min-height: 0; padding: 0; }
 .viewport { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--raised); border-radius: 0; }
@@ -85,12 +84,12 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
 .camera-switch button { min-height: 30px; display: flex; align-items: center; gap: 5px; font-size: 10px; padding: 5px 8px; border-radius: 8px; color: var(--muted); }
 .camera-switch .selected { background: var(--raised); color: var(--text); }
 .shot-frame { position: absolute; z-index: 1; pointer-events: none; left: var(--frame-x); top: var(--frame-y); width: var(--frame-width); height: var(--frame-height); border: 1px solid var(--accent); box-shadow: 0 0 0 100vmax oklch(25% .01 90 / .08); }
+.shot-frame.is-minimized { transform: scale(.72); transform-origin: center; }
 .shot-frame span { position: absolute; left: 8px; bottom: 6px; color: var(--muted); font-size: 9px; font-weight: 500; }
-.shot-actions { position: absolute; bottom: calc(var(--timeline-overlay-height, 0px) + 12px); right: 12px; white-space: nowrap; z-index: 2; }
-.shot-actions .button { min-height: 30px; padding: 6px 10px; font-size: 10px; }
+.camera-frame-toggle { position: absolute; z-index: 3; top: 56px; right: 12px; width: 32px; height: 32px; background: oklch(100% 0 0 / .9); }
 .camera-match { position: absolute; left: 50%; bottom: calc(var(--timeline-overlay-height, 0px) + 76px); transform: translateX(-50%); }
 .shot-active .viewport-top, .shot-active .viewport-bottom, .shot-active .viewport-tools { z-index: 2; }
-@media (max-width: 700px) { .shot-actions { bottom: calc(var(--timeline-overlay-height, 0px) + 54px); } .camera-match { left: auto; right: 52px; top: 96px; bottom: auto; transform: none; font-size: 10px; min-height: 32px; padding: 6px 10px; } }
+@media (max-width: 700px) { .camera-match { left: auto; right: 52px; top: 96px; bottom: auto; transform: none; font-size: 10px; min-height: 32px; padding: 6px 10px; } }
 .camera-feed { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 .camera-feed.mirrored { transform: scaleX(-1); }
 .ar-panel { position: absolute; left: 17px; bottom: calc(var(--timeline-overlay-height, 0px) + 76px); z-index: 7; width: min(340px, calc(100% - 34px)); max-height: calc(100% - var(--timeline-overlay-height, 0px) - 160px); overflow: auto; padding: 17px; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); display: flex; flex-direction: column; gap: 12px; box-shadow: 0 8px 32px oklch(25% .01 90 / .07); }
@@ -102,8 +101,7 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
 .ar-status { color: var(--mint); font-size: 12px; line-height: 1.6; }
 .ar-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .ar-actions .button { flex: 1; padding-inline: 10px; }
-.camera-badge { position: absolute; bottom: calc(var(--timeline-overlay-height, 0px) + 76px); left: 17px; max-width: calc(100% - 34px); padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; font-size: 11px; display: flex; align-items: center; gap: 12px; }
-.camera-badge button { color: var(--red); min-height: 30px; }
+.shot-active .selection-pill, .camera-active .selection-pill { display: none; }
 .xr-overlay { display: none; }
 .xr-overlay.is-active { display: flex; position: fixed; inset: 0; z-index: 50; flex-direction: column; align-items: center; justify-content: space-between; padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom)); pointer-events: none; }
 .xr-instructions { display: flex; flex-direction: column; gap: 6px; max-width: 380px; background: var(--panel); border: 1px solid var(--line); padding: 16px 20px; border-radius: 18px; text-align: center; font-size: 13px; }
@@ -215,7 +213,6 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
   .header-actions { gap: 1px; }
   .header-actions .icon-button { width: 32px; height: 32px; }
   .redo-button { display: none; }
-  .scene-menu .menu-redo { display: flex; }
   .stage-area { padding: 0; }
   .viewport { border-radius: 0; }
   .viewport-top { top: 96px; left: 12px; right: 12px; }
@@ -537,7 +534,6 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 .project-name-action span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-saving { position: fixed; z-index: 60; left: 50%; bottom: 24px; transform: translateX(-50%); border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 14px 24px; font-size: 12px; }
 .app-header > button.brand { padding: 0; border-radius: 8px; }
-.app-header .output-button { min-height: 32px; padding: 7px 13px; border-radius: 10px; font-size: 11px; }
 /* Keep the renderer's dimensions and camera intact while output occupies the page. */
 .editor-suspended { position: fixed; inset: 0; visibility: hidden; pointer-events: none; }
 .output-shell { --accent: var(--text); --accent-soft: var(--raised); min-height: 100dvh; background: var(--bg); position: relative; }
@@ -630,7 +626,6 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
   .output-layout { grid-template-columns: minmax(0, 1.2fr) minmax(260px, 1fr); gap: 24px; }
 }
 @media (max-width: 700px) {
-  .app-header .output-button { position: absolute; top: 42px; right: 0; }
   .output-header { padding: 12px 16px; }
   .output-header .brand { gap: 6px; font-size: 14px; }
   .output-header .button { padding: 8px 10px; min-height: 38px; font-size: 10px; }

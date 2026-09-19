@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bone, Check, Diamond, Download, Eye, Film, FolderOpen, HelpCircle, MoreHorizontal, Pencil, Redo2, RotateCcw, Save, Shapes, Smartphone, Sparkles, Trash2, Undo2, X } from 'lucide-react';
+import { Bone, Check, Diamond, Download, Eye, Film, FolderOpen, HelpCircle, Mic, MoreHorizontal, Pencil, Redo2, RotateCcw, Save, Shapes, Sparkles, Trash2, Undo2, X } from 'lucide-react';
 import { importProject, openSavedProject, saveCurrentProject } from './core/projectSession';
 import ProjectNameDialog from './components/ProjectNameDialog';
 import { hasCharacter, hasTarget } from './core/project';
@@ -11,7 +11,6 @@ import { studio, useStudio } from './core/store';
 import Viewport from './scene/Viewport';
 import TimelinePanel from './components/TimelinePanel';
 import Inspector from './components/Inspector';
-import PhoneCameraPanel from './components/PhoneCameraPanel';
 
 type Panel = 'scene' | 'animate';
 function saveFile(name: string, content: string) {
@@ -24,7 +23,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
   const s = useStudio();
   const [panel, setPanel] = useState<Panel>('scene');
   useEffect(() => { if (s.project.clips?.length) setPanel('animate'); }, [s.project.clips?.length]);
-  const [sidePanel, setSidePanel] = useState<'ai' | 'animations' | 'objects' | 'projects' | 'phone' | null>(null);
+  const [sidePanel, setSidePanel] = useState<'ai' | 'animations' | 'objects' | 'projects' | null>(null);
   const [saving, setSaving] = useState(false);
   const [naming, setNaming] = useState(false);
   async function save(goHome = false) {
@@ -83,7 +82,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
       if (e.code === 'KeyF') studio.patch({ frameRequest: studio.get().frameRequest + 1 });
       if (e.code === 'KeyG') studio.setMode('translate');
       if (e.code === 'KeyR') studio.setMode('rotate');
-      if (e.code === 'KeyS' && !['handheld', 'shot'].includes(studio.get().camera)) studio.setMode('scale');
+      if (e.code === 'KeyS' && studio.get().camera !== 'shot') studio.setMode('scale');
       if ((e.code === 'Delete' || e.code === 'Backspace') && studio.get().selectedKey) { e.preventDefault(); studio.deleteKey(); return; }
       if ((e.code === 'Delete' || e.code === 'Backspace') && studio.get().selectedClip) { e.preventDefault(); studio.deleteClip(); return; }
       if ((e.code === 'Delete' || e.code === 'Backspace') && !studio.get().selectedKey && studio.get().selectionActive) { e.preventDefault(); studio.removeObject(); }
@@ -118,15 +117,16 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
       </nav>
       <div className="header-actions">
         <button className={`icon-button ${sidePanel === 'animations' ? 'is-on' : ''}`} aria-label="Animations" title="Animation library" aria-expanded={sidePanel === 'animations'} aria-controls="animations-panel" onClick={() => { toggleSide('animations'); setPanel('animate'); }}><FolderOpen size={19} /></button>
-        <button className="icon-button" aria-label="Phone camera" title="Record camera movement with your phone" aria-expanded={sidePanel === 'phone'} onClick={() => toggleSide('phone')}><Smartphone size={19} /></button>
-        <button className="icon-button" aria-label="Regenerate" title="Regenerate objects and motion" aria-expanded={sidePanel === 'ai'} onClick={() => toggleSide('ai')}><Sparkles size={19} /></button>
-        <button className="button primary output-button" onClick={onOutput}><Film size={16} />Output</button>
-        <button className="icon-button" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!s.undoCount} onClick={studio.undo}><Undo2 size={19} /></button>
-        <button className="icon-button redo-button" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!s.redoCount} onClick={studio.redo}><Redo2 size={19} /></button>
+        <button className="icon-button" aria-label="Add model" title="Add a model with voice" onClick={() => toggleSide('objects')}><Mic size={18} /></button>
         <div className="menu-wrap" ref={menuRef}>
           <button ref={menuButton} className={`icon-button ${menu ? 'is-on' : ''}`} aria-label="Scene menu" aria-expanded={menu} aria-controls="scene-menu" onClick={() => setMenu(!menu)}><MoreHorizontal size={22} /></button>
           {menu && <div id="scene-menu" className="scene-menu">
             <button className="project-name-action" onClick={() => { setMenu(false); setNaming(true); }} aria-label="Rename project"><Pencil size={16} /><span>{s.project.name}</span></button>
+            <div className="menu-separator" />
+            <button onClick={() => { setMenu(false); onOutput(); }}><Film size={16} /> Output</button>
+            <button disabled={!s.undoCount} onClick={() => { studio.undo(); setMenu(false); }}><Undo2 size={16} /> Undo</button>
+            <button disabled={!s.redoCount} onClick={() => { studio.redo(); setMenu(false); }}><Redo2 size={16} /> Redo</button>
+            <button onClick={() => toggleSide('ai')}><Sparkles size={16} /> Regenerate</button>
             <div className="menu-separator" />
             <button role="switch" aria-label="Demo mode" aria-checked={s.project.demo} onClick={toggleDemo}><Sparkles size={16} /> Demo mode <span className={`menu-toggle ${s.project.demo ? 'is-checked' : ''}`} aria-hidden="true"><span /></span></button>
             <div className="menu-separator" />
@@ -135,7 +135,6 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
             <button onClick={() => toggleSide('projects')}><FolderOpen size={16} />Open saved project</button>
             <button onClick={() => { fileInput.current?.click(); setMenu(false); }}><FolderOpen size={16} /> Open scene</button>
             <button onClick={() => { saveFile(`${s.project.name.replace(/[^a-z0-9_-]/gi, '-') || 'scene'}.json`, JSON.stringify(s.project, null, 2)); setMenu(false); studio.patch({ status: 'Scene saved to a JSON file.' }); }}><Download size={16} /> Save scene</button>
-            <button className="menu-redo" disabled={!s.redoCount} onClick={() => { studio.redo(); setMenu(false); }}><Redo2 size={16} /> Redo</button>
             <div className="menu-separator" />
             <button onClick={() => studio.patch({ showRig: !s.showRig })}><Bone size={16} /> Show skeleton {s.showRig && <Check className="menu-check" size={14} />}</button>
             <button onClick={() => studio.patch({ showGrid: !s.showGrid })}><Shapes size={16} /> Show grid {s.showGrid && <Check className="menu-check" size={14} />}</button>
@@ -171,7 +170,6 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
       try { await openSavedProject(id); setSidePanel(null); }
       finally { setSaving(false); }
     }} />}
-    {sidePanel === 'phone' && <PhoneCameraPanel onClose={() => setSidePanel(null)} />}
     </div>
     {saving && <div className="project-saving" role="status">Saving project…</div>}
     {naming && <ProjectNameDialog name={s.project.name} title="Rename project" action="Save name" onClose={() => setNaming(false)} onSubmit={async name => { studio.rename(name); await saveCurrentProject(); }} />}

@@ -13,7 +13,7 @@ function restore(): Project | undefined { try { const raw = localStorage.getItem
 export interface EditorState {
   project: Project; preview: Project | null; exporting: boolean; objectId: string; time: number; playing: boolean; loop: boolean; selected: string; channel: Channel;
   selectedKey: string | null; mode: 'translate' | 'rotate' | 'scale'; space: 'world' | 'local';
-  showRig: boolean; showGrid: boolean; selectionActive: boolean; camera: 'orbit' | 'handheld' | 'shot' | 'camera' | 'ar'; frameRequest: number;
+  showRig: boolean; showGrid: boolean; selectionActive: boolean; camera: 'orbit' | 'shot' | 'camera' | 'ar'; frameRequest: number;
   status: string; undoCount: number; redoCount: number;
   selectedClip: string | null; editingClip: string | null;
   phoneControl: boolean;

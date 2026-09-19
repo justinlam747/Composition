@@ -1,4 +1,4 @@
-export type CameraView = 'orbit' | 'handheld' | 'shot';
+export type CameraView = 'orbit' | 'shot';
 type Navigate = (view: CameraView) => Promise<void>;
 let navigate: Navigate | undefined;
 

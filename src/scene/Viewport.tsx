@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { MousePointer2, Move, Rotate3D, Maximize, Camera, Focus, Box, Scan } from 'lucide-react';
+import { MousePointer2, Move, Rotate3D, Maximize, Camera, Focus, Box, Scan, Minimize2, Maximize2 } from 'lucide-react';
 import { BONES, CAMERA_ID, HUMANOID_ID, clipAt, clipSourceTime, hasCharacter, hasTarget, type Project, MAX_ROTATION_PATH_POINTS, fromQuaternion, rotationPathTo, sample, toQuaternion, unwrapRotation, type Vec3 } from '../core/project';
 import { clipPreview } from '../core/clips';
 import { studio, useStudio } from '../core/store';
@@ -31,6 +31,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
   const [mirrored, setMirrored] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [frameMinimized, setFrameMinimized] = useState(false);
   const state = useStudio();
   useEffect(() => {
     const container = host.current!;
@@ -200,15 +201,15 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       start.set(event.clientX, event.clientY);
       renderer.domElement.focus({ preventScroll: true });
       const s = studio.get();
-      if (!s.phoneControl && !s.exporting && !s.playing && !s.preview && ['handheld', 'shot'].includes(s.camera) && event.button === 0 && !transform.axis) {
+      if (!s.phoneControl && !s.exporting && !s.playing && !s.preview && s.camera === 'shot' && event.button === 0 && !transform.axis) {
         holding = true; renderer.domElement.setPointerCapture(event.pointerId);
         if (s.camera === 'shot') beginPilot();
       }
     }
     function pointerMove(event: PointerEvent) {
       const s = studio.get();
-      if (s.phoneControl || s.exporting || s.playing || s.preview || !holding || dragging || !['handheld', 'shot'].includes(s.camera)) return;
-      const activeCamera = s.camera === 'shot' ? shot.camera : camera;
+      if (s.phoneControl || s.exporting || s.playing || s.preview || !holding || dragging || s.camera !== 'shot') return;
+      const activeCamera = shot.camera;
       const look = new THREE.Euler().setFromQuaternion(activeCamera.quaternion, 'YXZ');
       look.y -= event.movementX * .004; look.x = THREE.MathUtils.clamp(look.x - event.movementY * .004, -1.5, 1.5); activeCamera.quaternion.setFromEuler(look);
       if (s.camera === 'shot') savePilot();
@@ -304,10 +305,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
         camera.position.copy(center).add(new THREE.Vector3(3.1, 1.1, 5.2)); orbit.target.copy(center); camera.lookAt(center); frameRequest = s.frameRequest;
       }
       orbit.enabled = !s.exporting && !dragging && (s.camera === 'orbit' || s.camera === 'camera');
-      if (s.camera === 'handheld' && !dragging) {
-        moveCamera(camera, dt);
-        const forward = new THREE.Vector3(); camera.getWorldDirection(forward); orbit.target.copy(camera.position).addScaledVector(forward, 4);
-      } else if (orbit.enabled) orbit.update();
+      if (orbit.enabled) orbit.update();
       if (inShot && !s.phoneControl && !s.playing && !s.preview && [...keys].some(key => movementKeys.has(key))) {
         beginPilot();
         moveCamera(shot.camera, dt);
@@ -365,7 +363,8 @@ export default function Viewport({ active = true }: { active?: boolean }) {
   }, []);
   return <section className={`viewport${state.camera === 'camera' ? ' camera-active' : ''}${state.camera === 'shot' ? ' shot-active' : ''}`} aria-label="Scene editor" aria-busy={loading && !error}>
     <video ref={video} className={`camera-feed${mirrored ? ' mirrored' : ''}`} aria-label="Live camera preview" muted playsInline autoPlay hidden={ar.mode !== 'camera' || ar.phase !== 'live'} />
-    <div ref={host} className="canvas-host"><div className="shot-frame" hidden={state.camera !== 'shot'} aria-label="Camera frame"><span>Camera · 16:9</span></div></div>
+    <div ref={host} className="canvas-host"><div className={`shot-frame${frameMinimized ? ' is-minimized' : ''}`} hidden={state.camera !== 'shot'} aria-label="Camera frame"><span>Camera · 16:9</span></div></div>
+    {state.camera === 'shot' && <button className="camera-frame-toggle icon-button" title={frameMinimized ? 'Show camera overlay' : 'Minimize camera overlay'} aria-label={frameMinimized ? 'Show camera overlay' : 'Minimize camera overlay'} aria-pressed={frameMinimized} onClick={() => setFrameMinimized(value => !value)}>{frameMinimized ? <Maximize2 size={18} /> : <Minimize2 size={18} />}</button>}
     {error && <div className="viewport-error" role="alert">{error}</div>}
     <div className="viewport-top"><button className="selection-pill" title="Select the whole object" onClick={() => studio.select('model', 'position')}><Box size={15} />{loading ? 'Loading character...' : state.objectId === CAMERA_ID ? 'Camera' : state.project.objects.some(o => o.id === state.objectId && !o.hidden) ? (state.selected === 'model' ? state.project.objects.find(o => o.id === state.objectId)?.name : BONES.find(b => b.id === state.selected)?.name) : 'Empty scene'}</button>{state.camera !== 'shot' && <button className="frame-button icon-button" title="Frame selection (F)" aria-label="Frame character" onClick={() => studio.patch({ frameRequest: state.frameRequest + 1 })}><Focus size={19} /></button>}</div>
     {state.selectionActive && !state.preview && !state.exporting && !loading && !error && <div className="viewport-tools">
@@ -375,10 +374,8 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     </div>}
     {!state.project.objects.some(o => !o.hidden) && <div className="empty-scene"><Box size={30} /><h2>Add a character</h2><button className="button primary" onClick={studio.add}>Add sample mannequin</button></div>}
     {arOpen && state.camera !== 'ar' && <ARControls state={ar} experience={experience.current} mirrored={mirrored} onMirror={() => setMirrored(value => !value)} onClose={() => setAROpen(false)} />}
-    {state.camera === 'camera' && !arOpen && <div className="camera-badge" role="status">Camera overlay · no room tracking<button onClick={() => experience.current?.stop()}>Stop camera</button></div>}
-    {state.camera === 'shot' && !state.selectionActive && !state.phoneControl && <div className="shot-actions"><button className="button secondary" disabled={state.playing} onClick={() => { studio.selectObject(CAMERA_ID); studio.cameraPose({ position: sample(state.project, 'model', 'position', state.time, CAMERA_ID), rotation: sample(state.project, 'model', 'rotation', state.time, CAMERA_ID) }); }}>Key camera</button></div>}
     {state.objectId === CAMERA_ID && state.selectionActive && state.camera === 'orbit' && <button className="button secondary camera-match" onClick={() => matchCamera.current()}>Set camera from this view</button>}
-    <div className="viewport-bottom"><div className="camera-switch"><button title="Drag to orbit; scroll to zoom" className={state.camera === 'orbit' ? 'selected' : ''} onClick={() => changeCameraView('orbit')}><MousePointer2 size={15} /> Orbit</button><button title="Drag to aim; WASD to move; Q/E up and down. Edits key at the playhead." className={state.camera === 'shot' ? 'selected' : ''} disabled={loading || !!error || !!state.preview} onClick={() => changeCameraView('shot')}><Camera size={15} /> Camera view</button><button title="Drag to look; WASD to move; Q/E up and down" className={state.camera === 'handheld' ? 'selected' : ''} onClick={() => changeCameraView('handheld')}>Handheld</button><button className={arOpen || ar.mode !== 'idle' ? 'selected' : ''} aria-expanded={arOpen} disabled={loading || !!error || !!state.preview} onClick={() => { setAROpen(open => !open); studio.patch({ selectionActive: false }); }}><Scan size={15} /> AR</button></div></div>
+    <div className="viewport-bottom"><div className="camera-switch"><button title="Drag to orbit; scroll to zoom" className={state.camera === 'orbit' ? 'selected' : ''} onClick={() => changeCameraView('orbit')}><MousePointer2 size={15} /> Orbit</button><button title="Drag to aim; WASD to move; Q/E up and down. Edits key at the playhead." className={state.camera === 'shot' ? 'selected' : ''} disabled={loading || !!error || !!state.preview} onClick={() => changeCameraView('shot')}><Camera size={15} /> Camera view</button><button className={arOpen || ar.mode !== 'idle' ? 'selected' : ''} aria-expanded={arOpen} disabled={loading || !!error || !!state.preview} onClick={() => { setAROpen(open => !open); studio.patch({ selectionActive: false }); }}><Scan size={15} /> AR</button></div></div>
     {createPortal(<div ref={xrOverlay} className={`xr-overlay${state.camera === 'ar' ? ' is-active' : ''}`}>
       <div className="xr-instructions" role="status"><strong>Place your scene</strong><span>{ar.phase === 'starting' ? 'Starting room placement…' : ar.message}</span></div>
       <div className="xr-actions">
