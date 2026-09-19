@@ -424,8 +424,8 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 .home-navigation button { display: flex; align-items: center; gap: 11px; min-height: 44px; padding: 10px 13px; border-radius: 11px; text-align: left; color: var(--muted); font-size: 12px; }
 .home-navigation button small { margin-left: auto; font-size: 10px; color: var(--faint); }
 .home-navigation button:hover { background: var(--bg); color: var(--text); }
-.home-navigation button[aria-current=page] { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
-.home-navigation button[aria-current=page] small { color: var(--accent); }
+.home-navigation button[aria-current=page] { background: var(--bg); color: var(--text); font-weight: 650; }
+.home-navigation button[aria-current=page] small { color: var(--muted); }
 .sidebar-storage { display: flex; align-items: center; gap: 10px; margin-top: auto; padding: 22px 8px 0; }
 .storage-icon { display: grid; place-items: center; width: 33px; height: 33px; flex-shrink: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; color: var(--muted); }
 .sidebar-storage > div { display: flex; flex-direction: column; gap: 4px; }
@@ -433,11 +433,8 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 .sidebar-storage div span { font-size: 8px; color: var(--muted); }
 .sidebar-storage > .saved-dot { margin-left: auto; }
 .home-main { min-width: 0; }
-.home-topbar { min-height: 78px; padding: 0 44px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); gap: 20px; }
-.home-breadcrumb { display: flex; align-items: center; gap: 11px; font-size: 11px; color: var(--muted); }
-.home-breadcrumb strong { font-weight: 550; color: var(--text); }
-.breadcrumb-divider { color: var(--faint); margin: 0 3px; }
 .home-content { max-width: 1480px; margin: auto; padding: 45px 44px 28px; }
+.library-topbar { display: flex; align-items: flex-start; margin-bottom: 34px; }
 .home-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; margin-bottom: 46px; }
 .home-eyebrow { color: var(--muted); font-size: 9px; letter-spacing: 1.7px; font-weight: 650; }
 .home-heading h1 { font-size: 42px; letter-spacing: -1.8px; font-weight: 600; margin: 9px 0 10px; }
@@ -451,7 +448,7 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 .project-search input { font-size: 10px; width: 164px; min-height: 34px; }
 .project-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 26px; row-gap: 32px; }
 .project-card { width: 100%; padding: 0; min-width: 0; text-align: left; border-radius: 16px; background: transparent; }
-.project-art { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--raised); }
+.project-art { position: relative; aspect-ratio: 3 / 2; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--raised); }
 .project-preview-image, .project-preview-image img { width: 100%; height: 100%; }
 .project-preview-image { position: absolute; inset: 0; display: grid; place-items: center; }
 .project-preview-image img { display: block; object-fit: cover; }
@@ -499,7 +496,7 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 @media (max-width: 1050px) {
   .home-shell { grid-template-columns: 206px minmax(0, 1fr); }
   .home-sidebar { padding-inline: 15px; }.home-brand { font-size: 17px; padding-inline: 6px; }
-  .home-content { padding: 36px 28px 24px; }.home-topbar { padding-inline: 28px; }
+  .home-content { padding: 36px 28px 24px; }
   .project-grid { gap: 26px 20px; }
   .project-card-copy { flex-direction: column; gap: 8px; }
 }
@@ -513,9 +510,8 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
   .home-navigation { width: 100%; margin-top: 24px; gap: 8px; }
   .home-navigation button { width: 44px; min-height: 44px; padding: 0; justify-content: center; }
   .sidebar-storage { padding: 18px 0 0; }
-  .home-topbar { min-height: 68px; padding: 0 18px; }.home-breadcrumb { font-size: 10px; gap: 8px; }
-
   .home-content { padding: 28px 18px 24px; }
+  .library-topbar { margin-bottom: 28px; }
   .home-heading { margin-bottom: 30px; }.home-heading h1 { font-size: 34px; margin-top: 8px; }
   .home-heading p { font-size: 11px; }.home-eyebrow { font-size: 7px; letter-spacing: 1.2px; }
   .library-toolbar { align-items: stretch; flex-direction: column; gap: 14px; }
