@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { type AnimationAsset, type Channel, type Project, type Vec3, type ShotCamera, CAMERA_ID, clipAt, clipSceneTime, clipSourceTime, hasTarget, primaryTarget, makeCamera, HUMANOID_ID, makeObject, validateProject, type SceneObject, type Generation, makeProject, moveKey, parseProject, sample, seedIdle, snapTime, clipTimelineTime, clipTimelineSceneTime, motionTime, motionSceneTime, uid } from './project';
 import { applyProposal, sceneSignature, type Proposal } from './proposals';
-import { applyDirectorActions, type DirectorExecution } from './director';
+import { prepareDirectorActions, type DirectorExecution } from './director';
 import { simplifyRotationPath } from './rotationPath';
 import { editTransformKey } from './keyEditing';
 import { animationFromClip, animationFromTracks, clipPreview, clipProject, insertClip, replaceClipTracks, splitClip, transformClip } from './clips';
@@ -20,7 +20,7 @@ export interface EditorState {
   status: string; undoCount: number; redoCount: number;
   selectedClip: string | null; editingClip: string | null;
   phoneControl: boolean;
-  directorPlacement: Vec3 | null; directorPicking: boolean;
+  directorPlacement: Vec3 | null; directorPreviewPlacement: Vec3 | null; directorPicking: boolean;
   timelineMode: 'keys' | 'velocity' | 'value'; selectedVelocityKey: string | null;
 }
 const draft = restore();
@@ -31,7 +31,7 @@ let state: EditorState = {
   mode: 'translate', space: 'world', showRig: false, showGrid: true, selectionActive: false, camera: 'orbit', frameRequest: 0,
   status: 'Ready. Start with a pose, or load the demo idle.', undoCount: 0, redoCount: 0,
   selectedClip: null, editingClip: null, phoneControl: false,
-  directorPlacement: null, directorPicking: false,
+  directorPlacement: null, directorPreviewPlacement: null, directorPicking: false,
   timelineMode: 'keys', selectedVelocityKey: null,
 };
 const listeners = new Set<() => void>();
@@ -40,6 +40,7 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let transaction: Project | null = null;
 function emit(patch: Partial<EditorState>) {
   state = { ...state, ...patch };
+  if (!state.preview) state.directorPreviewPlacement = null;
   if (!hasTarget(state.project, state.objectId)) {
     state = { ...state, objectId: primaryTarget(state.project), selected: 'model', channel: 'position', mode: 'translate', selectionActive: false };
   }
@@ -124,8 +125,9 @@ export const studio = {
     if (execution.status !== 'ready' || execution.proposal.status !== 'approved') throw new Error('Approve the current proposal before applying it.');
     if (studio.directorBusy()) throw new Error('Finish the current drag, capture or phone control before applying.');
     if (execution.proposal.baseSignature !== sceneSignature(state.project)) throw new Error('The scene changed. Refresh the director proposal before applying.');
-    const project = applyDirectorActions(state.project, execution.proposal.actions, execution.animations);
-    commit(project, 'Director changes applied. Undo is available.');
+    const { project, placement } = prepareDirectorActions(state.project, execution.proposal.actions, execution.animations);
+    if (execution.proposal.actions.some(action => action.kind !== 'set_placement')) commit(project, 'Director changes applied. Undo is available.');
+    if (placement) emit({ directorPlacement: placement, directorPicking: false, preview: null, status: 'Placement point set by Director.' });
     const created = execution.proposal.actions.find(a => a.kind === 'create_object');
     if (created?.kind === 'create_object') studio.selectObject(created.objectId);
   },

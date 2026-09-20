@@ -5,7 +5,7 @@ import { studio } from './store';
 import { uid } from './project';
 import { sceneSignature } from './proposals';
 import { animationLibrary } from './animationLibrary';
-import { applyDirectorActions, directorSceneContext, explicitDirectorDecision, type DirectorContext, type DirectorExecution, type DirectorMessage, type DirectorProposal, type DirectorTurn } from './director';
+import { prepareDirectorActions, directorSceneContext, explicitDirectorDecision, type DirectorContext, type DirectorExecution, type DirectorMessage, type DirectorProposal, type DirectorTurn } from './director';
 import { captureDirectorFrame } from '../scene/directorCapture';
 import { DirectorVoice, type VoiceEvent, type VoiceStatus } from './directorVoice';
 
@@ -141,8 +141,8 @@ export class DirectorSession {
     try {
       const current = this.current(), proposal = this.state.proposal;
       if (!proposal || proposal.baseSignature !== sceneSignature(current.project)) throw new Error('The scene changed. Refresh the proposal first.');
-      const preview = applyDirectorActions(current.project, proposal.actions, this.state.execution?.animations);
-      studio.patch({ preview, playing: false, selectionActive: false }); this.update({ error: '' });
+      const { project: preview, placement } = prepareDirectorActions(current.project, proposal.actions, this.state.execution?.animations);
+      studio.patch({ preview, directorPreviewPlacement: placement ?? null, playing: false, selectionActive: false }); this.update({ error: '' });
     } catch (error) { this.update({ error: (error as Error).message }); }
   };
   private watch() {
@@ -164,7 +164,8 @@ export class DirectorSession {
       try {
         studio.applyDirector(execution); this.applied.add(execution.id); this.autoApply = false;
         const applied: DirectorExecution = { ...execution, status: 'applied', proposal: { ...execution.proposal, status: 'applied' } };
-        this.update({ execution: applied, proposal: applied.proposal }); this.remember(applied); this.message('assistant', 'Applied. You can adjust the result in the scene or use Undo.'); this.voiceUpdate(true);
+        this.update({ execution: applied, proposal: applied.proposal }); this.remember(applied);
+        this.message('assistant', execution.proposal.actions.every(action => action.kind === 'set_placement') ? 'Marker placed. Tell me what you want to put here.' : 'Applied. You can adjust the result in the scene or use Undo.'); this.voiceUpdate(true);
         void api.directorDecision(execution.proposal, 'applied', studio.get().project).catch(() => { /* Local ledger prevents replay; a recovered result always needs review. */ });
       } catch (error) { this.autoApply = false; this.update({ error: (error as Error).message, needsReview: true }); }
     } else if (execution.status === 'failed') { this.autoApply = false; this.update({ error: execution.error ?? 'Preparation failed. Retry or revise the request.' }); this.voiceUpdate(); }

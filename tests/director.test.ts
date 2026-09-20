@@ -1,12 +1,38 @@
 import { describe, expect, it } from 'vitest';
-import { applyDirectorActions, directorSceneContext, explicitDirectorDecision, rebaseMotion, type DirectorAction } from '../src/core/director';
+import { applyDirectorActions, prepareDirectorActions, directorActionSchema, directorSceneContext, explicitDirectorDecision, rebaseMotion, type DirectorAction, type DirectorExecution } from '../src/core/director';
 import { CAMERA_ID, makeObject, makeProject, sample, type AnimationAsset } from '../src/core/project';
 import { deskGeometry } from '../src/core/propGeometry';
+import { sceneSignature } from '../src/core/proposals';
+import { studio } from '../src/core/store';
 
 export const deskAction = (): DirectorAction => ({ kind: 'create_object', objectId: 'desk', spec: { kind: 'box', name: 'Desk', dimensions: [1.4, .75, .7], geometry: deskGeometry(), referenceAssetIds: [] }, position: [2, 0, 1], rotation: [0, 0, 0] });
 export const waveAsset = (): AnimationAsset => ({ id: 'wave', name: 'Wave', kind: 'humanoid', source: 'ai', duration: 2, tracks: [{ objectId: 'humanoid', target: 'arm.L', channel: 'rotation', keys: [{ id: 'wave0', time: 0, value: [0, 0, 0], ease: 'linear' }, { id: 'wave1', time: 2, value: [0, 0, 90], ease: 'linear' }] }] });
 
 describe('director commands', () => {
+  const marker = (objectId = 'humanoid', time = 0): DirectorAction => ({ kind: 'set_placement', location: { kind: 'relative', objectId, offset: [5, 0, 0], time } });
+  it('places a floor marker relative to the animated pose without changing the project', () => {
+    const project = applyDirectorActions(makeProject(), [{ kind: 'animate', objectId: 'humanoid', name: 'Travel', start: 0, duration: 2, tracks: [{ target: 'model', channel: 'position', keys: [{ time: 0, value: [1, 3, 2], ease: 'linear' }, { time: 2, value: [5, 3, 4], ease: 'linear' }] }] }]);
+    expect(prepareDirectorActions(project, [marker('humanoid', 1)])).toEqual({ project, placement: [8, 0, 3] });
+    expect(prepareDirectorActions(makeProject(), [{ kind: 'update_object', objectId: 'humanoid', position: [2, 1, -3] }, marker()]).placement).toEqual([7, 0, -3]);
+  });
+  it('rejects marker references and coordinates that cannot be placed', () => {
+    expect(() => prepareDirectorActions(makeProject(), [marker('missing')])).toThrow('reference object');
+    const hidden = makeProject(); hidden.objects[0].hidden = true;
+    expect(() => prepareDirectorActions(hidden, [marker()])).toThrow('hidden');
+    const distant = makeProject(); distant.objects[0].position = [18, 0, 0];
+    expect(() => applyDirectorActions(distant, [marker()])).toThrow('within 20');
+    expect(() => applyDirectorActions(makeProject(), [marker('humanoid', 9)])).toThrow('outside the scene');
+    expect(directorActionSchema.safeParse({ kind: 'set_placement', location: { kind: 'absolute', position: [1, 2, 3] } }).success).toBe(false);
+  });
+  it('applies an approved marker without a scene undo entry and rejects failed batches atomically', () => {
+    const project = makeProject(); studio.openProject(project);
+    const execution: DirectorExecution = { id: 'marker', status: 'ready', animations: {}, proposal: { id: 'marker', sessionId: 'test', projectId: project.id, status: 'approved', baseSignature: sceneSignature(project), revision: 1, summary: 'Place marker', actions: [marker()] } };
+    studio.applyDirector(execution);
+    expect(studio.get().directorPlacement).toEqual([5, 0, 0]); expect(studio.get().undoCount).toBe(0); expect(studio.get().project).toEqual(project);
+    execution.proposal.actions = [{ kind: 'set_placement', location: { kind: 'absolute', position: [2, 0, 3] } }, { kind: 'delete_object', objectId: 'missing' }];
+    expect(() => studio.applyDirector(execution)).toThrow(); expect(studio.get().directorPlacement).toEqual([5, 0, 0]);
+    studio.openProject(makeProject()); expect(studio.get().directorPlacement).toBeNull();
+  });
   it('creates, resizes and places a desk without touching the input', () => {
     const base = makeProject();
     const next = applyDirectorActions(base, [deskAction(), { kind: 'update_object', objectId: 'desk', dimensions: [2, 1, .8], position: [3, 0, 0] }]);

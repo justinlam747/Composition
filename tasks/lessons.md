@@ -108,3 +108,7 @@ No `CLAUDE.md` was found in the workspace or its ancestors during this review, s
 - Rebase generated root motion against the scene after all preceding actions in its batch, preserving position and heading and rotating displacement by the same orientation delta. Keep completed animation assets through refreshes and partial failures so review or retry can reuse generation. Test a nonzero starting heading and an earlier placement action. See `rebaseMotion` in `src/core/director.ts`, `server/director.ts`, and the director tests.
 
 No `CLAUDE.md` was found in the workspace or its ancestors during this review, so no agent-rule file was created or changed.
+
+## Director placement markers - 2026-09-19
+
+- Agent commands can change transient editor tools without changing the saved scene. Return those effects alongside the prepared project, keep proposed markers separate until approval, and skip scene-history commits and Undo controls for marker-only actions; otherwise Undo can revert an unrelated scene edit. Verify both unchanged project/history and preview cancellation. See `prepareDirectorActions`, `studio.applyDirector`, `DirectorPanel.tsx`, and the director tests.

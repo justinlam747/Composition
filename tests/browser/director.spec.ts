@@ -58,6 +58,27 @@ test('cancel leaves the scene unchanged and a scene edit requires renewed approv
   await expect.poll(async () => (await scene(page)).objects.length).toBe(3);
 });
 
+test('director places a relative marker through preview and approval then builds a desk there', async ({ page }) => {
+  await openDirector(page);
+  await page.evaluate(async () => { const path = '/src/core/store.ts'; const studio = (await import(path)).studio; studio.setValue([2, 0, -1]); });
+  const before = await scene(page);
+  const placement = () => page.evaluate(async () => { const path = '/src/core/store.ts'; const state = (await import(path)).studio.get(); return { marker: state.directorPlacement, preview: state.directorPreviewPlacement, undo: state.undoCount }; });
+  const undo = (await placement()).undo;
+  await ask(page, 'Place the marker 5 units to the right of the humanoid');
+  const proposal = page.getByRole('region', { name: 'Director proposal' }); await expect(proposal).toContainText('world +X');
+  expect((await placement()).marker).toBeNull();
+  await proposal.getByRole('button', { name: 'Preview', exact: true }).click();
+  expect(await placement()).toEqual({ marker: null, preview: [7, 0, -1], undo });
+  await proposal.getByRole('button', { name: 'End preview' }).click(); expect((await placement()).preview).toBeNull();
+  await proposal.getByRole('button', { name: 'Cancel', exact: true }).click(); expect((await placement()).marker).toBeNull();
+  await ask(page, 'Place the marker 5 units to the right of the humanoid'); await expect(proposal).toBeVisible(); await ask(page, 'Yes please');
+  await expect(page.getByText('Marker placed', { exact: true })).toBeVisible();
+  expect(await placement()).toEqual({ marker: [7, 0, -1], preview: null, undo }); expect(await scene(page)).toEqual(before);
+  await ask(page, 'Add a desk here'); await expect(proposal).toBeVisible(); await ask(page, 'Yes please');
+  await expect.poll(async () => (await scene(page)).objects.length).toBe(2);
+  expect((await scene(page)).objects[1].position).toEqual([7, 0, -1]);
+});
+
 test('director creates a camera and handles provider errors without a scene edit', async ({ page }) => {
   await openDirector(page); await ask(page, 'Frame the character with the camera');
   await page.getByRole('region', { name: 'Director proposal' }).getByRole('button', { name: 'Apply', exact: true }).click();

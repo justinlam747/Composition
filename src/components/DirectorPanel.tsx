@@ -52,7 +52,7 @@ export default function DirectorPanel({ open, active, onOpen, onClose }: { open:
         <button className="button secondary" disabled={state.busy} onClick={() => void session.decide('cancel')}>Cancel</button>
       </div>
     </section>}
-    {execution?.status === 'applied' && <div className="director-applied"><span><Check size={14} /> Changes applied</span><button disabled={!editor.undoCount} onClick={studio.undo}><Undo2 size={14} /> Undo</button></div>}
+    {execution?.status === 'applied' && <div className="director-applied"><span><Check size={14} />{execution.proposal.actions.every(action => action.kind === 'set_placement') ? 'Marker placed' : 'Changes applied'}</span>{execution.proposal.actions.some(action => action.kind !== 'set_placement') && <button disabled={!editor.undoCount} onClick={studio.undo}><Undo2 size={14} /> Undo</button>}</div>}
     {state.error && <div className="director-error" role="alert"><div><p>{state.error}</p>{working && <button className="director-retry" onClick={() => void session.checkProgress()}>Check progress again</button>}</div><button aria-label="Dismiss director error" onClick={session.clearError}><X size={14} /></button></div>}
     {capabilities && !capabilities.director && <p className="director-config" role="status">Director needs a Gemini connection. Set GEMINI_API_KEY on the local server, then restart it.</p>}
     <form className="director-composer" onSubmit={event => { event.preventDefault(); void send(); }}>

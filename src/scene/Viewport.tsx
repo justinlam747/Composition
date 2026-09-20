@@ -275,8 +275,9 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       const project = s.preview ?? editView ?? s.project;
       const inRoom = s.camera === 'ar';
       const inShot = s.camera === 'shot';
-      placement.visible = !!s.directorPlacement && !inRoom && !s.preview;
-      if (s.directorPlacement) placement.position.set(s.directorPlacement[0], .005, s.directorPlacement[2]);
+      const marker = s.preview ? s.directorPreviewPlacement : s.directorPlacement;
+      placement.visible = !!marker && !inRoom;
+      if (marker) placement.position.set(marker[0], .005, marker[2]);
       if (piloting && (!inShot || s.phoneControl || s.playing || s.exporting || s.preview)) blur();
       grid.visible = s.showGrid && s.camera !== 'camera' && !inRoom;
       arExperience.updateFrame(xrFrame);

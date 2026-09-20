@@ -11,6 +11,7 @@ export function mockProviders(store: FileStore): Providers {
     configured: { gemini: true, fal: true, hunyuanMotion: true }, model: 'mock-seedance-test-only',
     async director(input) {
       if (input.text === 'FAIL_DIRECTOR_TEST') throw new AppError(502, 'MOCK_FAILURE', 'Test director failed.');
+      if (/place the marker 5 units to the right of the humanoid/i.test(input.text)) return { kind: 'proposal', message: 'Place the floor marker 5 units to the right of the humanoid (world +X) at the current playhead. Apply this change?', actions: [{ kind: 'set_placement', location: { kind: 'relative', objectId: 'humanoid', offset: [5, 0, 0], time: input.context.time } }] };
       if (/camera/i.test(input.text)) return { kind: 'proposal', message: 'Place the camera facing the scene.', actions: [{ kind: 'camera_pose', position: [0, 2, 5], rotation: [0, 0, 0] }] };
       if (!input.context.placement) return { kind: 'message', message: 'Click Pick placement point, then click the floor where you want the desk.' };
       return { kind: 'proposal', message: 'Add a 1.4 m wide wooden desk with four legs at your placement marker. Apply this change?', actions: [{ kind: 'create_object', objectId: uid(), spec: { kind: 'box', name: 'Oak desk', dimensions: [1.4, .75, .7], referenceAssetIds: [], geometry: deskGeometry() }, position: input.context.placement, rotation: [0, 0, 0] }] };

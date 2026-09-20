@@ -10,8 +10,14 @@ const vector = z.tuple([z.number().finite().min(-10000).max(10000), z.number().f
 const dimensions = vector.refine(value => value.every(n => n >= .05 && n <= 20));
 const time = z.number().finite().min(0).max(10);
 const duration = z.number().finite().min(.5).max(10);
+const floorPoint = z.tuple([z.number().finite().min(-20).max(20), z.literal(0), z.number().finite().min(-20).max(20)]);
+const floorOffset = z.tuple([z.number().finite().min(-40).max(40), z.literal(0), z.number().finite().min(-40).max(40)]);
 const tracks = z.array(z.object({ target: z.string().max(40), channel: z.enum(['position', 'rotation', 'scale']), keys: z.array(z.object({ time, value: vector, ease: z.enum(['linear', 'smooth']) }).strict()).min(2).max(60) }).strict()).min(1).max(40);
 export const directorActionSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('set_placement'), location: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('absolute'), position: floorPoint }).strict(),
+    z.object({ kind: z.literal('relative'), objectId: id, offset: floorOffset, time }).strict(),
+  ]) }).strict(),
   z.object({ kind: z.literal('create_object'), objectId: id, spec: objectSpecSchema, position: vector, rotation: vector }).strict(),
   z.object({ kind: z.literal('update_object'), objectId: id, name: z.string().trim().min(1).max(120).optional(), dimensions: vector.optional(), geometry: propGeometrySchema.optional(), position: vector.optional(), rotation: vector.optional(), scale: vector.optional() }).strict(),
   z.object({ kind: z.literal('delete_object'), objectId: id }).strict(),
@@ -66,10 +72,26 @@ export function directorSceneContext(project: Project, context: DirectorContext)
 
 /** One pure, atomic command path used for validation, previews and acceptance. */
 export function applyDirectorActions(project: Project, actions: DirectorAction[], animations: Record<string, AnimationAsset> = {}, allowPending = false): Project {
+  return prepareDirectorActions(project, actions, animations, allowPending).project;
+}
+
+export function prepareDirectorActions(project: Project, actions: DirectorAction[], animations: Record<string, AnimationAsset> = {}, allowPending = false): { project: Project; placement?: Vec3 } {
   let next = validateProject(project);
+  let placement: Vec3 | undefined;
   for (const [index, raw] of actions.entries()) {
     const action = directorActionSchema.parse(raw);
-    if (action.kind === 'create_object') {
+    if (action.kind === 'set_placement') {
+      const location = action.location;
+      if (location.kind === 'absolute') placement = location.position;
+      else {
+        if (!next.objects.some(object => object.id === location.objectId && !object.hidden)) throw new Error('The marker reference object no longer exists or is hidden.');
+        if (location.time > next.duration) throw new Error('The marker reference time is outside the scene.');
+        const origin = sample(next, 'model', 'position', location.time, location.objectId);
+        placement = [origin[0] + location.offset[0], 0, origin[2] + location.offset[2]];
+      }
+      if (!floorPoint.safeParse(placement).success) throw new Error('Place the marker on the floor within 20 units of the scene origin on X and Z.');
+      continue;
+    } else if (action.kind === 'create_object') {
       const object = objectFromSpec(action.spec, next);
       if (object.kind === 'humanoid' && action.objectId !== HUMANOID_ID) throw new Error('The humanoid must use the existing humanoid ID.');
       if (object.kind === 'box' && action.objectId === HUMANOID_ID || next.objects.some(o => o.id === action.objectId)) throw new Error('An object with this ID already exists.');
@@ -121,7 +143,7 @@ export function applyDirectorActions(project: Project, actions: DirectorAction[]
     }
     next = validateProject(next);
   }
-  return next;
+  return { project: next, placement };
 }
 
 export function rebaseMotion(asset: AnimationAsset, project: Project, start: number): AnimationAsset {
