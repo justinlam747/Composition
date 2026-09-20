@@ -1,6 +1,6 @@
 # Composition — Devpost story draft
 
-**Tagline:** Gemini-powered filmmaking: direct with your voice, film with your phone, and bring your composition to life.
+**Tagline:** Gemini- and ElevenLabs-powered filmmaking: direct with your voice, film with your phone, and bring your composition to life.
 
 ## Inspiration
 
@@ -8,17 +8,18 @@ I wanted AI filmmaking to preserve the freedom of finding a shot: moving around 
 
 ## What it does
 
-Composition is an agentic videography tool. Gemini Live provides conversational direction, Gemini plans scene edits, and a connected phone controls the virtual camera. Users save movement in reusable animation blocks, generate a visual treatment with Gemini, and use the composition to guide video generation.
+Composition is an agentic videography tool. Gemini Live provides conversational direction, Gemini plans scene edits, ElevenLabs speaks finalized Director replies, and a connected phone controls the virtual camera. Users save movement in reusable animation blocks, develop a visual treatment with Gemini, and choose between Seedance and Gemini Veo for video generation.
 
 ## How we built it
 
 **The filmmaking pipeline**
 
-1. **Direct with Gemini.** Gemini receives scene state and a viewport image, returning typed actions for objects, cameras, and animation. Gemini Live calls this workflow through voice; Hunyuan supplies generated character motion. Changes are validated and approved before application.
+1. **Direct with Gemini and ElevenLabs.** Gemini receives scene state and a viewport image, returning typed actions for objects, cameras, and animation. Gemini Live carries the conversational voice direction; after a reply is finalized, ElevenLabs synthesizes it as audio through a server-side voice proxy. Replies play completely and sequentially, and Director waits for the next turn while audio is preparing or playing. If information is missing, it asks one concise question and waits rather than guessing. Hunyuan supplies generated character motion. Changes are validated and approved before application.
 2. **Film and preserve movement.** ARKit sends phone position and orientation through a WebSocket relay. The Three.js editor maps those poses to the virtual camera and saves interpolated motion as editable timeline blocks. Blocks retain source keyframes when split, retimed, or reused.
 3. **Render the composition.** The saved camera and animation tracks become a clean 720p, 30 fps motion guide. This captures staging, timing, and camera movement independently of the phone's preview stream.
 4. **Develop the look with Gemini.** Gemini refines artistic prompts and generates styled first and last frames. Gemini receives the styled first image when creating the last, providing a shared appearance reference while retaining the ending composition.
-5. **Generate and review.** Seedance receives the motion guide, selected Gemini images, and direction prompt. The guide supplies motion and framing; Gemini images supply appearance. The pipeline saves returned video for review and download. Users can reuse the guide for another visual treatment.
+5. **Generate with Seedance or Gemini Veo.** Seedance receives the motion guide, selected Gemini images, and direction prompt: the guide supplies motion and framing while the images supply appearance. Gemini Veo 3.1 is an alternate Gemini API path for 4-, 6-, or 8-second 720p clips; it uses the direction and selected baseline/reference images, describes movement in the prompt, and returns generated audio. Veo does not receive the phone motion guide, so the user can intentionally choose authored motion (Seedance) or prompt-and-image-driven generation (Veo).
+6. **Review and iterate.** The pipeline saves returned video for review and download. Users can revise movement or staging, or reuse the composition for another visual treatment.
 
 **Solo development with Codex**
 
@@ -40,7 +41,8 @@ Gemini also needed to make safe, predictable edits. I gave it a compact set of t
 ## Accomplishments that we're proud of
 
 - Building a solo project spanning spatial editing, phone tracking, voice direction, and media generation with Codex.
-- Using Gemini across conversation, scene planning, prompt refinement, and image generation.
+- Using Gemini across conversation, scene planning, prompt refinement, image generation, and Veo video generation.
+- Adding ElevenLabs as a reliable spoken response layer for Director, with complete, non-overlapping playback and clarification turns that wait for the user's next message.
 - Validating a live Gemini object proposal and converting a two-second Hunyuan performance into 19 editable tracks.
 - Preserving authored motion through reusable blocks and a rendered generation guide.
 
@@ -52,7 +54,7 @@ Gemini becomes more useful when it operates on explicit scene state and visual c
 
 My next development pass focuses on:
 
-- **ElevenLabs audio:** generate audio for the finished output and combine it with the video through FFmpeg.
+- **Finished-film audio:** extend the current ElevenLabs Director voice layer into optional narration or dialogue tracks mixed into exported video through FFmpeg.
 - **Codex cloud sandboxes:** compare Gemini appearance-conditioning approaches in isolated environments using the same composition.
 - **Task forks, parallel agents, and worktree handoff:** branch an investigation with its conversation context, give independent implementation tasks separate checkouts, and bring a task and its code back to the local checkout for integration.
 - **Browser annotations and inline review:** point Codex at specific timeline or director-panel elements, reproduce browser interactions, and attach code feedback to exact diff lines.
@@ -61,15 +63,15 @@ My next development pass focuses on:
 
 ## Built with
 
-Gemini, Gemini Live, OpenAI Codex, Three.js, React, TypeScript, Node.js, ARKit, WebSockets, Zod, FFmpeg, Hunyuan Motion, Seedance, fal. Planned audio integration: ElevenLabs.
+Gemini, Gemini Live, Gemini Veo 3.1, ElevenLabs, OpenAI Codex, Three.js, React, TypeScript, Node.js, ARKit, WebSockets, Zod, FFmpeg, Hunyuan Motion, Seedance, fal.
 
 ---
 
 ## Implementation references — not submission copy
 
-The current repository implements **Seedance via fal**, not Veo. The draft reflects that implementation. Capture rates are code settings; device performance and generative fidelity are not presented as measured results.
+The current repository implements both **Seedance via fal** and **Gemini Veo 3.1**. It also implements ElevenLabs speech for finalized Director replies. Capture rates are code settings; device performance and generative fidelity are not presented as measured results.
 
-The author clarified that ElevenLabs and the proposed cloud/overnight experiments have not yet been completed. They appear as planned work. `AGENTS.md` supplies project instructions; reusable skills are defined separately in `SKILL.md`.
+The proposed cloud/overnight experiments remain future work. `AGENTS.md` supplies project instructions; reusable skills are defined separately in `SKILL.md`.
 
 The description emphasizes Codex's integrated workflow without claiming that skills, MCP, agents, or worktrees are exclusive to Codex. Official product documentation establishes feature availability, not competitor-wide exclusivity. Task forks, worktree handoff, browser annotations, inline review, and phone-based Remote control are proposed next steps here, not claims of completed use.
 
@@ -104,9 +106,12 @@ flowchart TD
     D --> H[Seedance video generation]
     F -->|Selected image references| H
     G --> H
-    H --> I[Saved MP4: review and download]
+    F --> J[Gemini Veo 3.1]
+    G --> J
+    J --> I[Saved MP4: review and download]
+    H --> I
     I -->|Revise movement or staging| C
     I -->|Reuse the guide with another look| G
 ```
 
-The phone's JPEG preview is a framing monitor. It is not used as the model's motion guide. The guide's configured 30 fps and the model's interpretation of its motion are distinct: the pipeline supplies temporal reference footage, not a guarantee of frame-exact generative reproduction. Generated baseline images are optional; the diagram shows the workflow when a pair is selected. Current video requests use a whole duration of 4–10 seconds, 720p, 16:9, audio disabled, and at most nine reference images.
+The phone's JPEG preview is a framing monitor. It is not used as the model's motion guide. The guide's configured 30 fps and the model's interpretation of its motion are distinct: the pipeline supplies temporal reference footage, not a guarantee of frame-exact generative reproduction. Generated baseline images are optional; the diagram shows the workflow when a pair is selected. Seedance requests use a whole duration of 4–10 seconds, 720p, 16:9, audio disabled, and at most nine reference images. Veo requests use 4, 6, or 8 seconds at 720p and 16:9, with up to three reference images or a baseline/last-frame pair; Veo generates audio and does not receive the motion guide.
