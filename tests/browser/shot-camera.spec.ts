@@ -116,6 +116,13 @@ test('camera manual keys stay visible and open from the animation blocks timelin
   await expect(page.getByRole('region', { name: 'Camera animation timeline' })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Animated object' })).toHaveValue('__shot_camera__');
   await expect(page.getByRole('slider', { name: 'Timeline playhead' })).toHaveValue('2.5');
+  const deleteKey = page.getByRole('button', { name: 'Delete key', exact: true });
+  await expect(deleteKey).toBeDisabled();
+  await page.getByRole('button', { name: 'Position key at 2.50 seconds', exact: true }).click();
+  await expect(deleteKey).toBeEnabled(); await deleteKey.click();
+  const cameraTracks = (await cameraState(page)).project.tracks.filter((track: any) => track.objectId === '__shot_camera__');
+  expect(cameraTracks.find((track: any) => track.channel === 'position').keys.map((key: any) => key.time)).toEqual([0, 5]);
+  expect(cameraTracks.find((track: any) => track.channel === 'rotation').keys.map((key: any) => key.time)).toEqual([0, 2.5, 5]);
 });
 
 test('guide export replays the scene camera while the editor is in Orbit view', async ({ page }) => {
