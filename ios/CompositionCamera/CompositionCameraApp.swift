@@ -25,9 +25,7 @@ private struct CameraScreen: View {
     var body: some View {
         VStack(spacing: 12) {
             HStack(spacing: 9) {
-                Image(systemName: "square.on.circle").font(.title3)
                 Text("composition").font(.system(size: 20, weight: .semibold))
-                Text("CAMERA").font(.system(size: 10, weight: .medium)).tracking(2).foregroundStyle(CameraPalette.muted).padding(.leading, 8)
                 Spacer()
                 HStack(spacing: 6) {
                     Circle().fill(controller.recording && !controller.paused ? CameraPalette.red : controller.aligned && !controller.paused ? CameraPalette.green : CameraPalette.muted).frame(width: 6, height: 6)
@@ -50,9 +48,8 @@ private struct CameraScreen: View {
                         ReceiverView(webView: controller.webView)
                     } else {
                         VStack(spacing: 12) {
-                            Image(systemName: "viewfinder").font(.system(size: 32, weight: .light))
-                            Text("Your virtual camera").font(.headline)
-                            Text("Connect to Composition to frame your shot.").font(.caption).foregroundStyle(CameraPalette.muted)
+                            Image(systemName: "video.slash").font(.system(size: 32, weight: .light)).foregroundStyle(CameraPalette.muted).accessibilityHidden(true)
+                            Text("Camera is disconnected").font(.headline)
                         }.padding().multilineTextAlignment(.center)
                     }
                     if controller.paused {

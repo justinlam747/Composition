@@ -13,6 +13,8 @@ The iPhone companion uses ARKit world tracking to send camera position and orien
 
 The Mac is needed to build/sign/install the companion and updates. Once installed, the capture connection runs directly between the phone and the Mac or Windows editor. The companion uses Composition's light palette. Tracking and latency statistics are hidden by default; open the **three-dot menu → Debug information** on the phone or editor to reveal them.
 
+The viewfinder shows a centered video-off icon and **Camera is disconnected** until the first decoded frame arrives, and again if frames stop arriving for more than 1.5 seconds (checked once per second). Pairing and motion tracking alone do not establish that video is arriving. Keep the editor visible, set the starting pose, and use **Retry preview** in the editor if the placeholder remains. JPEG stays hidden until a frame decodes, so no broken-image alt text appears.
+
 ## Recording behavior
 
 - Live framing is temporary. It does not rewrite saved keys or create undo entries for every packet. Setting up the scene camera is separate from saving a take.

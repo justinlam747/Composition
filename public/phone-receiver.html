@@ -5,8 +5,10 @@
 <style>
 html,body{margin:0;width:100%;height:100%;background:#f3f2ef;color:#292924;font:12px -apple-system,sans-serif;overflow:hidden}video,#jpeg{width:100%;height:100%;object-fit:contain;position:absolute;inset:0}#hud{position:absolute;left:12px;bottom:12px;right:12px;background:#fffffff2;border:1px solid #e2e1dc;padding:12px;border-radius:14px;pointer-events:none}button{pointer-events:auto;background:#292924;color:#fff;border:0;border-radius:10px;padding:9px;margin:4px 8px 4px 0}button:disabled{opacity:.4}#numbers{font-variant-numeric:tabular-nums}#status{margin-bottom:4px}small{display:block;color:#6b695f;margin-top:4px}
 #notice{position:absolute;top:12px;left:12px;right:12px;background:#fffffff2;border:1px solid #e2e1dc;padding:12px;border-radius:14px;pointer-events:none}
+#disconnected{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#f3f2ef;pointer-events:none;text-align:center;padding:24px}#disconnected[hidden]{display:none}#disconnected svg{width:36px;height:36px;color:#6b695f}#disconnected p{margin:0;font-size:17px;font-weight:600}
 </style>
-<video id="video" autoplay muted playsinline hidden></video><img id="jpeg" alt="Virtual camera preview" hidden>
+<video id="video" aria-label="Virtual camera preview" autoplay muted playsinline hidden></video><img id="jpeg" alt="" hidden>
+<div id="disconnected" role="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 2 20 20M9.5 5H14a2 2 0 0 1 2 2v5l5-4v8l-2-1.5M16 16v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h1"/></svg><p>Camera is disconnected</p></div>
 <div id="notice" role="alert" hidden></div>
 <div id="hud" hidden><div id="status">Set the starting pose to see the virtual shot.</div><div id="numbers"></div><div id="render"></div><button id="test" disabled>Run 20 latency pulses</button><small>Control → decoded frame estimate. Includes return video; excludes motion sensing and physical screen scanout.</small></div>
 <script>
@@ -14,6 +16,7 @@ html,body{margin:0;width:100%;height:100%;background:#f3f2ef;color:#292924;font:
   const video = document.querySelector('#video'), jpeg = document.querySelector('#jpeg');
   const status = document.querySelector('#status'), numbers = document.querySelector('#numbers'), test = document.querySelector('#test');
   const notice = document.querySelector('#notice');
+  const disconnected = document.querySelector('#disconnected');
   function showError(message) { status.textContent = message; notice.textContent = message; notice.hidden = false; }
   const canvas = document.createElement('canvas'); canvas.width = 216; canvas.height = 24;
   const context = canvas.getContext('2d', { willReadFrequently: true });
@@ -34,10 +37,10 @@ html,body{margin:0;width:100%;height:100%;background:#f3f2ef;color:#292924;font:
     generation++; cancelTest(); pc?.close(); pc = undefined; candidates = [];
     if (frameCallback !== undefined && video.cancelVideoFrameCallback) video.cancelVideoFrameCallback(frameCallback);
     cancelAnimationFrame(raf); video.srcObject = null; video.hidden = true; jpeg.hidden = true; jpeg.removeAttribute('src');
-    jpegBusy = false; frames = 0; lastFrame = 0; test.disabled = true; notice.hidden = true;
+    jpegBusy = false; frames = 0; lastFrame = 0; test.disabled = true; notice.hidden = true; disconnected.hidden = false;
   }
   function detectedFrame(source) {
-    frames++; lastFrame = performance.now(); test.disabled = running; notice.hidden = true;
+    frames++; lastFrame = performance.now(); test.disabled = running; notice.hidden = true; disconnected.hidden = true;
     if (!pending) return;
     // Fixed high-contrast cells survive JPEG and H.264. Header guards against blank frames.
     context.drawImage(source, 8, 8, 216, 24, 0, 0, 216, 24);
@@ -89,7 +92,7 @@ html,body{margin:0;width:100%;height:100%;background:#f3f2ef;color:#292924;font:
       metrics = { fps: 0, dropped: null, jitterMs: null, rttMs: null, path: message.mode === 'jpeg' ? 'JPEG / paired WebSocket' : 'ICE pending' };
       status.textContent = message.mode === 'jpeg' ? 'JPEG baseline · 480×270 · 6 fps target' : `WebRTC · 960×540 · ${message.fps} fps target`;
       report();
-      if (message.mode !== 'webrtc') { jpeg.hidden = false; return; }
+      if (message.mode !== 'webrtc') return;
       if (!window.RTCPeerConnection) throw Error('WebRTC is unavailable in this web view.');
       const peer = new RTCPeerConnection({ iceServers: [] }), token = generation; pc = peer;
       peer.onicecandidate = event => {
@@ -104,7 +107,7 @@ html,body{margin:0;width:100%;height:100%;background:#f3f2ef;color:#292924;font:
       };
       peer.onconnectionstatechange = () => {
         if (token !== generation) return;
-        if (['failed','disconnected'].includes(peer.connectionState)) { cancelTest(); showError('Video disconnected. Retry preview on the Mac.'); report(); }
+        if (['failed','disconnected'].includes(peer.connectionState)) { cancelTest(); disconnected.hidden = false; showError('Video disconnected. Retry preview on the Mac.'); report(); }
       };
       return;
     }
@@ -113,7 +116,7 @@ html,body{margin:0;width:100%;height:100%;background:#f3f2ef;color:#292924;font:
       jpegBusy = true; const image = new Image(), token = generation;
       image.onload = () => {
         if (token !== generation) return;
-        jpeg.src = image.src; detectedFrame(image); jpegBusy = false;
+        jpeg.src = image.src; jpeg.hidden = false; detectedFrame(image); jpegBusy = false;
       };
       image.onerror = () => { if (token === generation) jpegBusy = false; };
       image.src = `data:image/jpeg;base64,${message.data}`; return;
@@ -139,6 +142,7 @@ html,body{margin:0;width:100%;height:100%;background:#f3f2ef;color:#292924;font:
     const now = performance.now(), peer = pc, token = generation;
     metrics.fps = Math.min(240, frames * 1000 / (now-lastStats)); frames = 0; lastStats = now;
     test.disabled = running || now - lastFrame > 1500;
+    if (!lastFrame || now - lastFrame > 1500) disconnected.hidden = false;
     if (peer) {
       try {
         const stats = await peer.getStats(); if (token !== generation) return;

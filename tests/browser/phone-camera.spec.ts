@@ -188,6 +188,36 @@ test('leaving during a take immediately persists the captured motion', async ({ 
   } finally { sender.close(); }
 });
 
+test('centers the disconnected placeholder until decoded frames arrive and restores it when the stream stops', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto('/phone-receiver.html');
+  const placeholder = page.locator('#disconnected'), jpeg = page.locator('#jpeg');
+  await expect(placeholder).toBeVisible();
+  await expect(placeholder).toHaveText('Camera is disconnected');
+  await expect(jpeg).toBeHidden();
+  await expect(jpeg).toHaveAttribute('alt', '');
+  const icon = (await placeholder.locator('svg').boundingBox())!, label = (await placeholder.locator('p').boundingBox())!;
+  expect(icon.x + icon.width / 2).toBeCloseTo(422, 0);
+  expect(label.x + label.width / 2).toBeCloseTo(422, 0);
+  expect((icon.y + label.y + label.height) / 2).toBeCloseTo(195, 0);
+  await page.screenshot({ path: 'test-results/phone-camera-disconnected.png' });
+  await page.evaluate(() => window.receiver.accept({ type: 'preview-config', version: 1, mode: 'jpeg', fps: 60, streamId: crypto.randomUUID() }));
+  await expect(placeholder).toBeVisible(); await expect(jpeg).toBeHidden();
+  await page.evaluate(() => window.receiver.accept({ type: 'jpeg', data: 'invalid-image' }));
+  await page.waitForTimeout(100);
+  await expect(placeholder).toBeVisible(); await expect(jpeg).toBeHidden();
+  const frame = () => page.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width = 480; canvas.height = 270;
+    canvas.getContext('2d')!.fillRect(0, 0, 480, 270);
+    return window.receiver.accept({ type: 'jpeg', data: canvas.toDataURL('image/jpeg').split(',')[1] });
+  });
+  await frame(); await expect(placeholder).toBeHidden(); await expect(jpeg).toBeVisible();
+  await expect(placeholder).toBeVisible({ timeout: 4000 });
+  await frame(); await expect(placeholder).toBeHidden();
+  await page.evaluate(() => window.receiver.close());
+  await expect(placeholder).toBeVisible(); await expect(jpeg).toBeHidden();
+});
+
 test('compares actual JPEG and WebRTC pixels, measures 20 pulses and cleans up on switching', async ({ page, browser }) => {
   test.setTimeout(90000);
   const sender = await pair(page), receiver = await browser.newPage();
@@ -214,12 +244,13 @@ test('compares actual JPEG and WebRTC pixels, measures 20 pulses and cleans up o
     await page.getByRole('menuitemradio', { name: 'Debug information' }).click();
     await page.getByRole('button', { name: 'Set starting pose', exact: true }).click();
     const pulse = receiver.getByRole('button', { name: 'Run 20 latency pulses' });
-    await expect(pulse).toBeEnabled(); await pulse.click();
+    await expect(pulse).toBeEnabled(); await expect(receiver.locator('#disconnected')).toBeHidden(); await pulse.click();
     await expect.poll(() => diagnostics.at(-1)?.samples.length, { timeout: 20000 }).toBe(20);
     expect(diagnostics.at(-1)?.timedOut).toBe(0);
     await page.getByRole('combobox', { name: 'Preview mode' }).selectOption('webrtc');
     await expect(receiver.locator('#video')).toBeVisible();
     await expect.poll(() => diagnostics.at(-1)?.fps, { timeout: 15000 }).toBeGreaterThan(0);
+    await expect(receiver.locator('#disconnected')).toBeHidden();
     expect(await receiver.locator('video').evaluate(el => (el as HTMLVideoElement).srcObject instanceof MediaStream && ((el as HTMLVideoElement).srcObject as MediaStream).getAudioTracks().length)).toBe(0);
     await expect(pulse).toBeEnabled(); await pulse.click();
     await expect.poll(() => diagnostics.at(-1)?.samples.length, { timeout: 20000 }).toBe(20);
@@ -245,6 +276,7 @@ test('compares actual JPEG and WebRTC pixels, measures 20 pulses and cleans up o
     });
     await expect(receiver.getByRole('alert')).toHaveText('WebRTC is unavailable in this web view.');
     await expect(receiver.getByRole('alert')).toBeVisible();
+    await expect(receiver.locator('#disconnected')).toBeVisible();
     await expect(receiver.locator('#hud')).toBeHidden();
     expect(errors).toEqual([]);
   } finally { sender.close(); await receiver.close(); }
