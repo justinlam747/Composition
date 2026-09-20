@@ -12,6 +12,9 @@ final class MotionController: NSObject, ObservableObject, ARSessionDelegate, WKN
     @Published private(set) var trackingReady = false
     @Published private(set) var aligned = false
     @Published private(set) var recording = false
+    @Published private(set) var paused = false
+    @Published private(set) var translationScale = 5.0
+    @Published private(set) var debugEnabled = false
     @Published private(set) var positionReadout = "Waiting for ARKit position…"
     @Published private(set) var message = "Open Phone camera in the desktop editor and choose Pair iPhone."
     @Published private(set) var receiverVisible = false
@@ -26,7 +29,7 @@ final class MotionController: NSObject, ObservableObject, ARSessionDelegate, WKN
         configuration.userContentController.add(ReceiverBridge(self), name: "receiver")
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = self
-        view.isOpaque = false; view.backgroundColor = .black
+        view.isOpaque = false; view.backgroundColor = .white
         view.scrollView.isScrollEnabled = false
         return view
     }()
@@ -39,6 +42,7 @@ final class MotionController: NSObject, ObservableObject, ARSessionDelegate, WKN
     private var generation = 0
     private var positionReadoutAt: TimeInterval = -1
     private var outgoingPosition: SIMD3<Float>?
+    private var settingsUpdate: DispatchWorkItem?
 
     override init() {
         super.init()
@@ -102,6 +106,7 @@ final class MotionController: NSObject, ObservableObject, ARSessionDelegate, WKN
         guard let value = body as? [String: Any], let type = value["type"] as? String else { return }
         if type == "receiver-ready" {
             receiverLoaded = true
+            deliver(["type": "debug", "enabled": debugEnabled])
             if paired, let task = socket { send(["type": "preview-ready", "version": 1], through: task) }
         } else if ["signal", "pulse", "diagnostics"].contains(type), paired, let task = socket {
             send(value, through: task)
@@ -162,7 +167,9 @@ final class MotionController: NSObject, ObservableObject, ARSessionDelegate, WKN
                         } else if event["type"] as? String == "state" {
                             self.aligned = event["aligned"] as? Bool ?? false
                             self.recording = event["recording"] as? Bool ?? false
-                            self.message = self.recording ? "Recording movement. Stop to save it." : self.aligned ? "Ready to record." : "Set the starting pose before the next take."
+                            self.paused = event["paused"] as? Bool ?? false
+                            if let scale = event["translationScale"] as? Double, (1...10).contains(scale), self.settingsUpdate == nil { self.translationScale = scale }
+                            self.message = self.paused ? "Reposition your phone, then resume. The shot stays here." : self.recording ? "Recording movement. Stop to save it." : self.aligned ? "Move to frame your shot. Record when ready." : "Set your starting pose to begin."
                         }
                     }
                 @unknown default: break
@@ -174,7 +181,31 @@ final class MotionController: NSObject, ObservableObject, ARSessionDelegate, WKN
 
     func control(_ action: String) {
         guard let task = socket else { return }
+        if settingsUpdate != nil {
+            settingsUpdate?.cancel(); settingsUpdate = nil
+            send(["type": "settings", "translationScale": translationScale], through: task)
+        }
         send(["type": "control", "action": action], through: task)
+    }
+
+    func setTranslationScale(_ value: Double) {
+        guard value.isFinite, !recording else { return }
+        translationScale = min(10, max(1, value))
+        settingsUpdate?.cancel()
+        let attempt = generation
+        let update = DispatchWorkItem { [weak self] in
+            guard let self, self.generation == attempt else { return }
+            self.settingsUpdate = nil
+            guard self.paired, let task = self.socket else { return }
+            self.send(["type": "settings", "translationScale": self.translationScale], through: task)
+        }
+        settingsUpdate = update
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: update)
+    }
+
+    func setDebugEnabled(_ enabled: Bool) {
+        debugEnabled = enabled
+        deliver(["type": "debug", "enabled": enabled])
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
@@ -247,13 +278,14 @@ final class MotionController: NSObject, ObservableObject, ARSessionDelegate, WKN
 
     func disconnect(message: String = "Disconnected. Pair again when ready.") {
         generation += 1
+        settingsUpdate?.cancel(); settingsUpdate = nil
         receiverDownload?.cancel(); receiverDownload = nil
         if receiverLoaded { webView.evaluateJavaScript("window.receiver?.close()", completionHandler: nil) }
         receiverLoaded = false; receiverVisible = false; paired = false
         let previous = socket; socket = nil
         previous?.cancel(with: .goingAway, reason: nil)
         session.pause()
-        active = false; aligned = false; recording = false; trackingReady = false; sending = false
+        active = false; aligned = false; recording = false; paused = false; trackingReady = false; sending = false
         positionReadoutAt = -1; outgoingPosition = nil; positionReadout = "Waiting for ARKit position…"
         tracking = "Waiting for tracking"; self.message = message
         UIApplication.shared.isIdleTimerDisabled = false

@@ -138,7 +138,7 @@ export class PhonePreview {
     const context = this.canvas.getContext('2d'); if (!context || !cssWidth) return;
     const begin = performance.now(), ratio = source.width / cssWidth;
     context.drawImage(source, frame.x * ratio, frame.y * ratio, frame.width * ratio, frame.height * ratio, 0, 0, this.canvas.width, this.canvas.height);
-    if (this.ready) drawLatencyMarker(context, this.pulseId);
+    if (this.ready && this.pulseId !== 0) drawLatencyMarker(context, this.pulseId);
     this.copyTime += performance.now() - begin; this.frameCount++; this.at = now;
     if (this.state.mode === 'webrtc') { this.track?.requestFrame(); return; }
     const session = this.session, generation = this.generation; this.busy = true;

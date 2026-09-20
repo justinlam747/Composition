@@ -3,14 +3,18 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src blob:; connect-src 'none'">
 <title>Composition latency receiver</title>
 <style>
-html,body{margin:0;width:100%;height:100%;background:#101010;color:#fff;font:12px -apple-system,sans-serif;overflow:hidden}video,#jpeg{width:100%;height:100%;object-fit:contain;position:absolute;inset:0}#hud{position:absolute;left:12px;bottom:12px;right:12px;background:#111c;padding:10px;border-radius:8px;pointer-events:none}button{pointer-events:auto;background:#ee9c54;color:#151515;border:0;border-radius:6px;padding:9px;margin:4px 8px 4px 0}button:disabled{opacity:.4}#numbers{font-variant-numeric:tabular-nums}#status{margin-bottom:4px}small{display:block;color:#ccc;margin-top:4px}
+html,body{margin:0;width:100%;height:100%;background:#f3f2ef;color:#292924;font:12px -apple-system,sans-serif;overflow:hidden}video,#jpeg{width:100%;height:100%;object-fit:contain;position:absolute;inset:0}#hud{position:absolute;left:12px;bottom:12px;right:12px;background:#fffffff2;border:1px solid #e2e1dc;padding:12px;border-radius:14px;pointer-events:none}button{pointer-events:auto;background:#292924;color:#fff;border:0;border-radius:10px;padding:9px;margin:4px 8px 4px 0}button:disabled{opacity:.4}#numbers{font-variant-numeric:tabular-nums}#status{margin-bottom:4px}small{display:block;color:#6b695f;margin-top:4px}
+#notice{position:absolute;top:12px;left:12px;right:12px;background:#fffffff2;border:1px solid #e2e1dc;padding:12px;border-radius:14px;pointer-events:none}
 </style>
 <video id="video" autoplay muted playsinline hidden></video><img id="jpeg" alt="Virtual camera preview" hidden>
-<div id="hud"><div id="status">Set the starting pose to see the virtual shot.</div><div id="numbers"></div><div id="render"></div><button id="test" disabled>Run 20 latency pulses</button><small>Control → decoded frame estimate. Includes return video; excludes motion sensing and physical screen scanout.</small></div>
+<div id="notice" role="alert" hidden></div>
+<div id="hud" hidden><div id="status">Set the starting pose to see the virtual shot.</div><div id="numbers"></div><div id="render"></div><button id="test" disabled>Run 20 latency pulses</button><small>Control → decoded frame estimate. Includes return video; excludes motion sensing and physical screen scanout.</small></div>
 <script>
 (() => {
   const video = document.querySelector('#video'), jpeg = document.querySelector('#jpeg');
   const status = document.querySelector('#status'), numbers = document.querySelector('#numbers'), test = document.querySelector('#test');
+  const notice = document.querySelector('#notice');
+  function showError(message) { status.textContent = message; notice.textContent = message; notice.hidden = false; }
   const canvas = document.createElement('canvas'); canvas.width = 216; canvas.height = 24;
   const context = canvas.getContext('2d', { willReadFrequently: true });
   let config, pc, candidates = [], generation = 0, incoming = Promise.resolve(), frameCallback, raf;
@@ -24,15 +28,16 @@ html,body{margin:0;width:100%;height:100%;background:#101010;color:#fff;font:12p
     numbers.textContent = `${config?.mode ?? 'Waiting'} · ${metrics.fps.toFixed(1)} fps · median ${percentile(.5)} ms · p95 ${percentile(.95)} ms · ${samples.length}/20 received · ${timedOut} timed out`;
     if (config) emit({ type: 'diagnostics', version: 1, streamId: config.streamId, ...metrics, samples, timedOut, status: status.textContent.slice(0,240) });
   }
-  function cancelTest() { clearTimeout(pulseTimer); clearTimeout(nextTimer); pending = undefined; running = false; }
+  function clearMarker() { if (config) emit({ type: 'pulse', version: 1, streamId: config.streamId, id: 0 }); }
+  function cancelTest() { clearTimeout(pulseTimer); clearTimeout(nextTimer); pending = undefined; running = false; clearMarker(); }
   function close() {
     generation++; cancelTest(); pc?.close(); pc = undefined; candidates = [];
     if (frameCallback !== undefined && video.cancelVideoFrameCallback) video.cancelVideoFrameCallback(frameCallback);
     cancelAnimationFrame(raf); video.srcObject = null; video.hidden = true; jpeg.hidden = true; jpeg.removeAttribute('src');
-    jpegBusy = false; frames = 0; lastFrame = 0; test.disabled = true;
+    jpegBusy = false; frames = 0; lastFrame = 0; test.disabled = true; notice.hidden = true;
   }
   function detectedFrame(source) {
-    frames++; lastFrame = performance.now(); test.disabled = running;
+    frames++; lastFrame = performance.now(); test.disabled = running; notice.hidden = true;
     if (!pending) return;
     // Fixed high-contrast cells survive JPEG and H.264. Header guards against blank frames.
     context.drawImage(source, 8, 8, 216, 24, 0, 0, 216, 24);
@@ -55,7 +60,7 @@ html,body{margin:0;width:100%;height:100%;background:#101010;color:#fff;font:12p
   }
   function nextPulse() {
     if (!running) return;
-    if (samples.length + timedOut >= 20) { running = false; test.disabled = false; status.textContent = 'Test complete. Export results from the Mac before switching modes.'; report(); return; }
+    if (samples.length + timedOut >= 20) { running = false; clearMarker(); test.disabled = false; status.textContent = 'Test complete. Export results from the Mac before switching modes.'; report(); return; }
     nextTimer = setTimeout(() => {
       if (!config || !running) return;
       pulseId = pulseId % 65535 + 1;
@@ -70,6 +75,11 @@ html,body{margin:0;width:100%;height:100%;background:#101010;color:#fff;font:12p
     status.textContent = 'Measuring returned pixels… Keep the Mac tab visible.'; report(); nextPulse();
   };
   async function accept(message) {
+    if (message.type === 'debug') {
+      document.querySelector('#hud').hidden = !message.enabled;
+      if (!message.enabled && running) { cancelTest(); status.textContent = 'Test stopped when debug was hidden.'; report(); }
+      return;
+    }
     if (message.type === 'render-stats' && message.streamId === config?.streamId) {
       document.querySelector('#render').textContent = `${message.poseHz.toFixed(1)} poses/s · desktop receive → render ${message.receiveToRenderMs?.toFixed(1) ?? '—'} ms · copy ${message.copyMs.toFixed(1)} ms`;
       return;
@@ -90,11 +100,11 @@ html,body{margin:0;width:100%;height:100%;background:#101010;color:#fff;font:12p
       peer.ontrack = event => {
         if (token !== generation || event.track.kind !== 'video') return;
         video.srcObject = new MediaStream([event.track]); video.hidden = false;
-        video.play().catch(() => { status.textContent = 'Tap the video to start playback.'; }); watchVideo(token);
+        video.play().catch(() => { if (token === generation) showError('Tap the video to start playback.'); }); watchVideo(token);
       };
       peer.onconnectionstatechange = () => {
         if (token !== generation) return;
-        if (['failed','disconnected'].includes(peer.connectionState)) { cancelTest(); status.textContent = 'Video disconnected. Retry preview on the Mac.'; report(); }
+        if (['failed','disconnected'].includes(peer.connectionState)) { cancelTest(); showError('Video disconnected. Retry preview on the Mac.'); report(); }
       };
       return;
     }
@@ -120,9 +130,9 @@ html,body{margin:0;width:100%;height:100%;background:#101010;color:#fff;font:12p
       if (token === generation) emit({ type: 'signal', version: 1, streamId: config.streamId, kind: 'answer', sdp: peer.localDescription.sdp });
     }
   }
-  video.onclick = () => video.play();
+  video.onclick = () => video.play().catch(() => showError('Unable to play video. Retry preview on the Mac.'));
   window.receiver = {
-    accept: message => { incoming = incoming.catch(() => {}).then(() => accept(message)).catch(error => { status.textContent = String(error.message).slice(0,240); report(); }); return incoming; },
+    accept: message => { incoming = incoming.catch(() => {}).then(() => accept(message)).catch(error => { showError(String(error.message).slice(0,240)); report(); }); return incoming; },
     close: () => { close(); config = undefined; },
   };
   setInterval(async () => {

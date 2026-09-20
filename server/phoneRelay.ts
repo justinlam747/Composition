@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { Express, Response } from 'express';
 import express from 'express';
-import { desktopSignalSchema, phoneMessageSchema, type PhoneEvent, type PhonePairing } from '../src/core/phoneProtocol';
+import { desktopSignalSchema, phoneMessageSchema, phoneStateSchema, type PhoneEvent, type PhonePairing } from '../src/core/phoneProtocol';
 import { AppError } from './storage';
 
 interface Session extends PhonePairing { phone?: WebSocket; viewers: Set<Response>; lastSeq: number; lastTime: number }
@@ -119,8 +119,9 @@ export class PhoneRelay {
     });
     app.post('/api/phone/:id/state', express.json({ limit: '1kb' }), (req, res) => {
       const phone = this.require(req.params.id).phone;
-      if (typeof req.body?.recording !== 'boolean' || typeof req.body?.aligned !== 'boolean') throw new AppError(400, 'INVALID_PHONE_STATE', 'Invalid phone state.');
-      if (phone?.readyState === WebSocket.OPEN) phone.send(JSON.stringify({ type: 'state', recording: req.body.recording, aligned: req.body.aligned }));
+      const parsed = phoneStateSchema.safeParse(req.body);
+      if (!parsed.success) throw new AppError(400, 'INVALID_PHONE_STATE', 'Invalid phone state.');
+      if (phone?.readyState === WebSocket.OPEN) phone.send(JSON.stringify({ type: 'state', ...parsed.data }));
       res.sendStatus(204);
     });
     app.delete('/api/phone/:id', (req, res) => { this.require(req.params.id); this.end(); res.sendStatus(204); });

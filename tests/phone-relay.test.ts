@@ -52,6 +52,11 @@ describe('phone relay', () => {
     const state = once(phone, 'message');
     await request(app).post(`/api/phone/${pairing.id}/state`).send({ aligned: true, recording: true }).expect(204);
     expect(JSON.parse((await state)[0].toString())).toEqual({ type: 'state', aligned: true, recording: true });
+    const paused = once(phone, 'message');
+    await request(app).post(`/api/phone/${pairing.id}/state`).send({ aligned: true, recording: true, paused: true, translationScale: 5.5 }).expect(204);
+    expect(JSON.parse((await paused)[0].toString())).toEqual({ type: 'state', aligned: true, recording: true, paused: true, translationScale: 5.5 });
+    await request(app).post(`/api/phone/${pairing.id}/state`).send({ aligned: true, recording: false, paused: 'yes' }).expect(400);
+    await request(app).post(`/api/phone/${pairing.id}/state`).send({ aligned: true, recording: false, translationScale: 11 }).expect(400);
     const closed = once(phone, 'close');
     phone.send(JSON.stringify({ type: 'pose', version: 1, seq: 1, time: 1, tracking: 'normal', position: [0, 0, 0], quaternion: [0, 0, 0, 8] }));
     expect((await closed)[0]).toBe(1008);

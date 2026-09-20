@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 const coordinate = z.number().finite().min(-1000).max(1000);
+export const translationScaleSchema = z.number().finite().min(1).max(10);
+export const phoneStateSchema = z.object({ aligned: z.boolean(), recording: z.boolean(),
+  paused: z.boolean().optional(), translationScale: translationScaleSchema.optional() }).strict();
 export const phonePoseSchema = z.object({
   type: z.literal('pose'), version: z.literal(1),
   seq: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
@@ -35,8 +38,9 @@ export const phoneDiagnosticsSchema = z.object({ type: z.literal('diagnostics'),
 }).strict();
 export const phoneMessageSchema = z.union([phonePoseSchema, phoneSignalSchema, phoneDiagnosticsSchema,
   z.object({ type: z.literal('preview-ready'), version: z.literal(1) }).strict(),
-  z.object({ type: z.literal('pulse'), version: z.literal(1), streamId, id: z.number().int().min(1).max(65535) }).strict(),
-  z.object({ type: z.literal('control'), action: z.enum(['align', 'record', 'stop']) }).strict(),
+  z.object({ type: z.literal('pulse'), version: z.literal(1), streamId, id: z.number().int().min(0).max(65535) }).strict(),
+  z.object({ type: z.literal('settings'), translationScale: translationScaleSchema }).strict(),
+  z.object({ type: z.literal('control'), action: z.enum(['align', 'record', 'stop', 'pause', 'resume']) }).strict(),
 ]);
 export type PhonePose = z.infer<typeof phonePoseSchema>;
 export type PhoneSignal = z.infer<typeof phoneSignalSchema>;

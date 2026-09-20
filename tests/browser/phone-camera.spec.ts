@@ -23,12 +23,19 @@ async function pair(page: Page) {
   }, 34);
   await expect(page.getByText('Tracking ready', { exact: true })).toBeVisible();
   return { phone, limited: () => { tracking = 'limited'; }, pause: () => clearInterval(timer),
+    control: (action: string) => phone.send(JSON.stringify({ type: 'control', action })),
+    settings: (translationScale: number) => phone.send(JSON.stringify({ type: 'settings', translationScale })),
     pose: (value: number[], rotation = [0, 0, 0, 1]) => { position = value; quaternion = rotation; },
     close: () => { clearInterval(timer); phone.close(); } };
 }
 
 test('shows received and mapped translation live without recording, and clears stale readings', async ({ page }) => {
   const sender = await pair(page);
+  await expect(page.getByRole('region', { name: 'Position tracking', exact: true })).toBeHidden();
+  await page.getByRole('button', { name: 'Phone camera options' }).click();
+  await page.getByRole('menuitemradio', { name: 'Debug information' }).click();
+  sender.settings(1);
+  await expect(page.getByRole('slider', { name: 'Movement sensitivity' })).toHaveValue('1');
   const received = page.getByLabel('Received phone position', { exact: true });
   const mapped = page.getByLabel('Mapped camera position', { exact: true });
   const cameraPose = () => page.evaluate(async () => {
@@ -53,6 +60,69 @@ test('shows received and mapped translation live without recording, and clears s
     expect((await scene(page)).project.clips ?? []).toHaveLength(0);
     sender.pause();
     await expect(received).toHaveText('—'); await expect(mapped).toHaveText('—');
+  } finally { sender.close(); }
+});
+
+test('amplifies translation and rebases sensitivity and native pause/resume without a jump', async ({ page }) => {
+  const sender = await pair(page);
+  const info = () => page.evaluate(async () => { const path = '/src/scene/phoneCamera.ts'; const { phoneCamera } = await import(path); return { state: phoneCamera.get(), pose: phoneCamera.pose(), positions: phoneCamera.positionDiagnostics() }; });
+  const distance = (a: number[], b: number[]) => Math.hypot(...a.map((v, i) => v - b[i]));
+  const acknowledgments: { paused: boolean; translationScale: number }[] = [];
+  sender.phone.on('message', (data, binary) => { if (!binary) { const value = JSON.parse(data.toString()); if (value.type === 'state') acknowledgments.push(value); } });
+  try {
+    await expect(page.getByRole('slider', { name: 'Movement sensitivity' })).toHaveValue('5');
+    sender.pose([0, 0, 0]); await expect.poll(async () => (await info()).positions.received).toEqual([0, 0, 0]);
+    await page.getByRole('button', { name: 'Set starting pose', exact: true }).click();
+    const start = (await info()).pose;
+    sender.pose([0, 0, -.2]);
+    await expect.poll(async () => distance((await info()).pose.position, start.position)).toBeCloseTo(1, 6);
+    const beforeScale = (await info()).pose;
+    sender.settings(10); await expect(page.getByRole('slider', { name: 'Movement sensitivity' })).toHaveValue('10');
+    expect(distance((await info()).pose.position, beforeScale.position)).toBeLessThan(1e-8);
+    sender.pose([0, 0, -.3]);
+    await expect.poll(async () => distance((await info()).pose.position, beforeScale.position)).toBeCloseTo(1, 6);
+    sender.control('pause'); await expect(page.getByRole('button', { name: 'Resume camera' })).toBeVisible();
+    const held = (await info()).pose;
+    const rotation = [0, Math.sin(.3), 0, Math.cos(.3)];
+    sender.pose([2, 1, -2], rotation); await expect.poll(async () => (await info()).positions.received).toEqual([2, 1, -2]);
+    expect((await info()).pose).toEqual(held);
+    await expect.poll(() => acknowledgments.at(-1)?.paused).toBe(true);
+    expect(acknowledgments.at(-1)?.translationScale).toBe(10);
+    sender.control('resume'); await expect(page.getByRole('button', { name: 'Pause camera' })).toBeVisible();
+    const resumed = (await info()).pose;
+    expect(distance(resumed.position, held.position)).toBeLessThan(1e-8);
+    for (let i = 0; i < 4; i++) expect(resumed.quaternion[i]).toBeCloseTo(held.quaternion[i], 8);
+    sender.pose([2, 1, -2.1], rotation);
+    await expect.poll(async () => distance((await info()).pose.position, held.position)).toBeCloseTo(1, 6);
+    await expect.poll(() => acknowledgments.at(-1)?.paused).toBe(false);
+    await page.screenshot({ path: 'test-results/phone-camera-light-controls.png', fullPage: true });
+  } finally { sender.close(); }
+});
+
+test('pauses recording time, ignores repositioning and rejects sensitivity changes during a take', async ({ page }) => {
+  const sender = await pair(page);
+  const info = () => page.evaluate(async () => { const path = '/src/scene/phoneCamera.ts'; return (await import(path)).phoneCamera.get(); });
+  try {
+    sender.pose([0, 0, 0]);
+    await page.waitForTimeout(100);
+    await page.getByRole('button', { name: 'Set starting pose', exact: true }).click();
+    sender.control('record'); await expect.poll(async () => (await info()).recording).toBe(true);
+    await page.waitForTimeout(300);
+    await page.getByRole('button', { name: 'Pause camera' }).click();
+    const paused = await info(), time = (await scene(page)).time;
+    sender.pose([4, 0, -4]); sender.settings(9);
+    await page.waitForTimeout(1000);
+    expect((await info()).elapsed).toBe(paused.elapsed); expect((await scene(page)).time).toBe(time);
+    expect((await info()).translationScale).toBe(5);
+    await expect(page.getByRole('slider', { name: 'Movement sensitivity' })).toBeDisabled();
+    await page.getByRole('button', { name: 'Resume camera' }).click();
+    await page.waitForTimeout(300);
+    await page.getByRole('button', { name: /Stop & save/ }).click();
+    const clip = (await scene(page)).project.clips[0];
+    expect(clip.duration).toBeGreaterThan(.3); expect(clip.duration).toBeLessThan(1.2);
+    const positions = clip.tracks.find((track: { channel: string }) => track.channel === 'position').keys;
+    for (const key of positions) for (let i = 0; i < 3; i++) expect(key.value[i]).toBeCloseTo(positions[0].value[i], 6);
+    expect((await info()).paused).toBe(false);
   } finally { sender.close(); }
 });
 
@@ -136,6 +206,12 @@ test('compares actual JPEG and WebRTC pixels, measures 20 pulses and cleans up o
   });
   try {
     await receiver.goto('http://127.0.0.1:5174/phone-receiver.html');
+    await expect(receiver.locator('#hud')).toBeHidden();
+    await expect(receiver.getByRole('alert')).toBeHidden();
+    await receiver.evaluate(() => window.receiver.accept({ type: 'debug', enabled: true }));
+    await expect(receiver.locator('#hud')).toBeVisible();
+    await page.getByRole('button', { name: 'Phone camera options' }).click();
+    await page.getByRole('menuitemradio', { name: 'Debug information' }).click();
     await page.getByRole('button', { name: 'Set starting pose', exact: true }).click();
     const pulse = receiver.getByRole('button', { name: 'Run 20 latency pulses' });
     await expect(pulse).toBeEnabled(); await pulse.click();
@@ -158,6 +234,18 @@ test('compares actual JPEG and WebRTC pixels, measures 20 pulses and cleans up o
     await expect(receiver.locator('#video')).toBeHidden();
     expect(await receiver.locator('video').evaluate(el => (el as HTMLVideoElement).srcObject)).toBeNull();
     await expect(receiver.locator('#jpeg')).toBeVisible();
+    await expect(pulse).toBeEnabled(); await pulse.click();
+    await receiver.evaluate(() => window.receiver.accept({ type: 'debug', enabled: false }));
+    await expect(receiver.locator('#hud')).toBeHidden();
+    await expect.poll(() => diagnostics.at(-1)?.status).toContain('stopped');
+    // Playback problems remain actionable even when the stats are hidden.
+    await receiver.evaluate(async () => {
+      Object.defineProperty(window, 'RTCPeerConnection', { value: undefined, configurable: true });
+      await window.receiver.accept({ type: 'preview-config', version: 1, mode: 'webrtc', fps: 60, streamId: crypto.randomUUID() });
+    });
+    await expect(receiver.getByRole('alert')).toHaveText('WebRTC is unavailable in this web view.');
+    await expect(receiver.getByRole('alert')).toBeVisible();
+    await expect(receiver.locator('#hud')).toBeHidden();
     expect(errors).toEqual([]);
   } finally { sender.close(); await receiver.close(); }
 });

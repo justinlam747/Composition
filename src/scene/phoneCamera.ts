@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
-import { CAMERA_ID, sample, type Project } from '../core/project';
-import { phonePoseSchema, type PhoneEvent, type PhonePairing, type PhonePose } from '../core/phoneProtocol';
+import { Quaternion } from 'three';
+import { CAMERA_ID, fromQuaternion, sample, type Project } from '../core/project';
+import { phonePoseSchema, translationScaleSchema, type PhoneEvent, type PhonePairing, type PhonePose } from '../core/phoneProtocol';
 import { alignPhone, cameraTake, interpolateMotionSample, type MotionSample } from '../core/phoneMotion';
 import { studio } from '../core/store';
 import { changeCameraView } from './cameraNavigation';
@@ -9,19 +10,26 @@ import { PhonePreview, initialPreviewState, type PreviewState } from './phonePre
 interface State {
   pairing: PhonePairing | null; connected: boolean; tracking: 'waiting' | PhonePose['tracking'];
   aligned: boolean; recording: boolean; elapsed: number; message: string;
+  paused: boolean; translationScale: number;
   preview: PreviewState;
 }
-let state: State = { pairing: null, connected: false, tracking: 'waiting', aligned: false, recording: false, elapsed: 0, message: '', preview: initialPreviewState };
+let state: State = { pairing: null, connected: false, tracking: 'waiting', aligned: false, recording: false, paused: false, translationScale: 5, elapsed: 0, message: '', preview: initialPreviewState };
 const listeners = new Set<() => void>();
 let events: EventSource | undefined, watch: ReturnType<typeof setInterval> | undefined;
 let latest: PhonePose | undefined, receivedAt = 0, revision = 0;
 let mapPose: ReturnType<typeof alignPhone> | undefined, live: MotionSample | undefined;
-let take: { project: Project; start: number; limit: number; samples: MotionSample[] } | undefined;
+let take: { project: Project; start: number; limit: number; samples: MotionSample[]; pausedSeconds: number; pauseAt?: number } | undefined;
 const preview = typeof document === 'undefined' ? undefined : new PhonePreview(value => update({ preview: value }));
+let stateMessages: Promise<unknown> = Promise.resolve();
 function update(patch: Partial<State>) { state = { ...state, ...patch }; listeners.forEach(listener => listener()); }
 function sendState() {
-  if (state.pairing) void fetch(`/api/phone/${state.pairing.id}/state`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ aligned: state.aligned, recording: state.recording }), signal: AbortSignal.timeout(2000) }).catch(() => {});
+  const id = state.pairing?.id;
+  if (!id) return;
+  const body = JSON.stringify({ aligned: state.aligned, recording: state.recording, paused: state.paused, translationScale: state.translationScale });
+  stateMessages = stateMessages.catch(() => {}).then(() => {
+    if (state.pairing?.id !== id) return;
+    return fetch(`/api/phone/${id}/state`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(2000) });
+  }).catch(() => {});
 }
 function stopTake(message = 'Take saved. Open Animate to replay and adjust it.') {
   const finished = take; take = undefined;
@@ -31,7 +39,7 @@ function stopTake(message = 'Take saved. Open Animate to replay and adjust it.')
   }
   mapPose = undefined; live = undefined;
   studio.patch({ phoneControl: false, playing: false });
-  update({ aligned: false, recording: false, message }); sendState();
+  update({ aligned: false, recording: false, paused: false, message }); sendState();
 }
 function loseTracking(message: string) {
   latest = undefined;
@@ -43,6 +51,7 @@ function receive(event: PhoneEvent) {
   if (event.type === 'connection') {
     if (event.connected && !state.connected && state.pairing) preview?.connect(state.pairing.id);
     update({ connected: event.connected });
+    if (event.connected) sendState();
     if (!event.connected) { preview?.disconnect(); loseTracking('Phone disconnected. Any captured motion was saved; reconnect and set the starting pose again.'); }
     return;
   }
@@ -50,10 +59,13 @@ function receive(event: PhoneEvent) {
   if (event.type === 'signal') { preview?.signal(event); return; }
   if (event.type === 'pulse') { preview?.pulse(event.streamId, event.id); return; }
   if (event.type === 'diagnostics') { preview?.diagnostics(event); return; }
+  if (event.type === 'settings') { phoneCamera.setTranslationScale(event.translationScale); return; }
   if (event.type === 'control') {
     if (event.action === 'align') void phoneCamera.align();
     if (event.action === 'record') phoneCamera.record();
     if (event.action === 'stop') stopTake();
+    if (event.action === 'pause') phoneCamera.pause();
+    if (event.action === 'resume') phoneCamera.resume();
     return;
   }
   const parsed = phonePoseSchema.safeParse(event); if (!parsed.success) return;
@@ -67,11 +79,12 @@ function receive(event: PhoneEvent) {
     if (state.aligned) stopTake('Tracking is limited. The captured portion was saved. Move slowly, then set the starting pose again.');
     return;
   }
-  if (!mapPose) return;
+  if (!mapPose || state.paused) return;
   live = mapPose(pose);
   if (!take) return;
-  const elapsed = live.time - take.samples[0].time;
-  take.samples.push(live);
+  const recorded = { ...live, time: live.time - take.pausedSeconds };
+  const elapsed = recorded.time - take.samples[0].time;
+  take.samples.push(recorded);
   studio.patch({ time: take.start + Math.min(elapsed, take.limit) });
   if (Math.floor(elapsed * 10) !== Math.floor(state.elapsed * 10)) update({ elapsed: Math.min(elapsed, take.limit) });
   if (elapsed >= take.limit) {
@@ -91,6 +104,27 @@ export const phoneCamera = {
   positionDiagnostics: () => {
     const fresh = latest && performance.now() - receivedAt <= 500;
     return { received: fresh ? [...latest!.position] : null, mapped: fresh && live ? [...live.position] : null };
+  },
+  setTranslationScale(value: number) {
+    if (!translationScaleSchema.safeParse(value).success || take) { sendState(); return; }
+    if (live && latest && !state.paused && latest.tracking === 'normal' && performance.now() - receivedAt <= 500) {
+      mapPose = alignPhone(latest, { position: live.position, rotation: fromQuaternion(new Quaternion(...live.quaternion)) }, value);
+    }
+    update({ translationScale: value }); sendState();
+  },
+  pause() {
+    if (!state.aligned || state.paused || !live || !latest || latest.tracking !== 'normal' || performance.now() - receivedAt > 500) return;
+    if (take) take.pauseAt = latest.time;
+    update({ paused: true, message: 'Paused. Reposition the phone, then resume from this view.' }); sendState();
+  },
+  resume() {
+    if (!state.paused || !live || !latest || latest.tracking !== 'normal' || performance.now() - receivedAt > 500 || document.hidden) return;
+    // Rebase both axes at the held camera pose: moving the phone while paused
+    // does not jump the shot, and paused time is omitted from a recorded take.
+    mapPose = alignPhone(latest, { position: live.position, rotation: fromQuaternion(new Quaternion(...live.quaternion)) }, state.translationScale);
+    if (take?.pauseAt !== undefined) { take.pausedSeconds += latest.time - take.pauseAt; take.pauseAt = undefined; }
+    live = mapPose(latest);
+    update({ paused: false, message: take ? 'Recording your camera movement…' : 'Move the phone to frame your shot.' }); sendState();
   },
   async pair() {
     phoneCamera.disconnect(); const current = ++revision;
@@ -115,19 +149,19 @@ export const phoneCamera = {
     await changeCameraView('shot');
     if (document.hidden || current !== revision || !latest || latest.tracking !== 'normal' || performance.now() - receivedAt > 500) return;
     const s = studio.get(); if (s.exporting || s.preview || !s.project.camera) return;
-    mapPose = alignPhone(latest, { position: sample(s.project, 'model', 'position', s.time, CAMERA_ID), rotation: sample(s.project, 'model', 'rotation', s.time, CAMERA_ID) });
+    mapPose = alignPhone(latest, { position: sample(s.project, 'model', 'position', s.time, CAMERA_ID), rotation: sample(s.project, 'model', 'rotation', s.time, CAMERA_ID) }, state.translationScale);
     live = mapPose(latest);
     studio.patch({ phoneControl: true, editingClip: null, playing: false, selectionActive: false });
-    update({ aligned: true, elapsed: 0, message: 'Move the phone to frame your shot. Record when ready.' }); sendState();
+    update({ aligned: true, paused: false, elapsed: 0, message: 'Move the phone to frame your shot. Record when ready.' }); sendState();
   },
   record() {
-    if (document.hidden || !state.aligned || !live || take || !latest || latest.tracking !== 'normal' || performance.now() - receivedAt > 500) return;
+    if (document.hidden || !state.aligned || state.paused || !live || take || !latest || latest.tracking !== 'normal' || performance.now() - receivedAt > 500) return;
     const s = studio.get(), start = Math.round(s.time * 30) / 30;
     const clips = s.project.clips?.filter(clip => clip.objectId === CAMERA_ID) ?? [];
     if (clips.some(clip => start >= clip.start && start < clip.start + clip.duration)) { update({ message: 'Move the playhead to an empty part of the camera track before recording.' }); return; }
     const end = Math.min(s.project.duration, ...clips.filter(clip => clip.start > start).map(clip => clip.start));
     if (end - start < 1 / 30) { update({ message: 'Move the playhead earlier to leave room for a take.' }); return; }
-    take = { project: s.project, start, limit: end - start, samples: [live] };
+    take = { project: s.project, start, limit: end - start, samples: [live], pausedSeconds: 0 };
     update({ recording: true, elapsed: 0, message: 'Recording your camera movement…' }); sendState();
   },
   stop: () => stopTake(take ? undefined : 'Phone control paused. Saved camera motion is unchanged.'),
@@ -140,7 +174,7 @@ export const phoneCamera = {
     if (id) void fetch(`/api/phone/${id}`, { method: 'DELETE', keepalive: true }).catch(() => {});
   },
   preview(canvas: HTMLCanvasElement, frame: { x: number; y: number; width: number; height: number }, cssWidth: number) {
-    if (state.connected) preview?.frame(canvas, frame, cssWidth, !!live);
+    if (state.connected) preview?.frame(canvas, frame, cssWidth, !!live && !state.paused);
   },
   configurePreview: (mode: PreviewState['mode'], fps: 30 | 60 = 60) => preview?.configure(mode, fps),
 };

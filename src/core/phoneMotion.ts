@@ -9,11 +9,12 @@ export function interpolateMotionSample(a: MotionSample, b: MotionSample, time: 
   return { time, position: new Vector3(...a.position).lerp(new Vector3(...b.position), alpha).toArray() as Vec3,
     quaternion: new Quaternion(...a.quaternion).slerp(new Quaternion(...b.quaternion), alpha).toArray() };
 }
-export function alignPhone(origin: PhonePose, camera: ShotCamera) {
-  // One rigid transform preserves real distances and keeps the scene anchored.
+export function alignPhone(origin: PhonePose, camera: ShotCamera, translationScale = 1) {
+  // Scale only displacement from the origin, never absolute position or rotation.
+  if (!Number.isFinite(translationScale) || translationScale < 1 || translationScale > 10) throw new Error('Movement sensitivity must be between 1× and 10×.');
   const rotation = toQuaternion(camera.rotation).multiply(new Quaternion(...origin.quaternion).normalize().invert());
   return (pose: PhonePose): MotionSample => ({ time: pose.time,
-    position: new Vector3(...pose.position).sub(new Vector3(...origin.position)).applyQuaternion(rotation).add(new Vector3(...camera.position)).toArray() as Vec3,
+    position: new Vector3(...pose.position).sub(new Vector3(...origin.position)).multiplyScalar(translationScale).applyQuaternion(rotation).add(new Vector3(...camera.position)).toArray() as Vec3,
     quaternion: rotation.clone().multiply(new Quaternion(...pose.quaternion).normalize()).toArray(),
   });
 }
