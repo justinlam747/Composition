@@ -62,7 +62,7 @@ test('double-click opens independent keys, velocity edits persist, and cached an
   const keyId = (await state(page)).project.clips[0].tracks[0].keys.find((value: { time: number }) => Math.abs(value.time - .7) < .0001).id;
   await key.press('Enter');
   await key.press('ArrowRight'); expect((await state(page)).project.clips[0].tracks[0].keys.find((value: { id: string }) => value.id === keyId).time).toBeCloseTo(22 / 30);
-  await page.getByRole('button', { name: 'Velocity timeline mode' }).click();
+  await page.getByLabel('Timeline mode', { exact: true }).selectOption('velocity');
   await page.getByRole('button', { name: 'Add velocity key', exact: true }).click();
   await page.getByLabel('Velocity key speed', { exact: true }).fill('1.75');
   await page.getByLabel('Velocity key speed', { exact: true }).press('Enter');

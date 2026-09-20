@@ -1,10 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Diamond, Plus, Trash2, ChevronDown, Activity } from 'lucide-react';
+import { ArrowLeft, Diamond, Plus, Trash2 } from 'lucide-react';
 import { BONES, CAMERA_ID, clipSceneTime, motionSceneTime, type Channel, type Track, type Keyframe } from '../core/project';
 import { studio, useStudio } from '../core/store';
 import AnimationTimeline from './AnimationTimeline';
 import VelocityTimeline from './VelocityTimeline';
 import TimelineTransport from './TimelineTransport';
+import TimelineModeSelect from './TimelineModeSelect';
+import ValueTimeline from './ValueTimeline';
 
 function Lane({ target, channel, label, track, duration, offset }: { target: string; channel: Channel; label: string; track?: Track; duration: number; offset: number }) {
   const s = useStudio();
@@ -45,7 +47,7 @@ function Lane({ target, channel, label, track, duration, offset }: { target: str
 export default function Timeline({ collapsed = false }: { collapsed?: boolean }) {
   const s = useStudio();
   const [manualOpen, setManualOpen] = useState(false);
-  const graphMode = s.timelineMode === 'velocity';
+  const graphMode = s.timelineMode !== 'keys';
   const clip = s.project.clips?.find(value => value.id === s.editingClip);
   const duration = clip?.duration ?? s.project.duration, offset = clip?.start ?? 0, time = Math.max(0, Math.min(duration, s.time - offset));
   const tracks = useMemo(() => graphMode ? [] : clip ? clip.tracks.map(track => ({ ...track,
@@ -66,11 +68,11 @@ export default function Timeline({ collapsed = false }: { collapsed?: boolean })
   const keyTimes = [...new Set(tracks.filter(t => t.objectId === s.objectId && t.target === s.selected && t.channel === s.channel).flatMap(t => t.keys.map(k => k.time)))].sort((a, b) => a - b);
   return <section className={`timeline${clip ? ' clip-keyframe-editor' : ''}${graphMode ? ' velocity-timeline' : ''}`} aria-label={clip ? `${clip.name} keyframes` : s.objectId === CAMERA_ID ? 'Camera animation timeline' : 'Model animation timeline'}>
     {(clip || manualOpen) && <div className="clip-breadcrumb"><button onClick={() => { studio.patch({ editingClip: null, selectedKey: null, selectedVelocityKey: null, timelineMode: 'keys', selectionActive: false }); setManualOpen(false); }}><ArrowLeft size={14} />All blocks</button><strong>{clip?.name ?? 'Manual keyframes'}</strong><span>{clip ? 'Edits affect this block only' : 'Scene keys'}</span></div>}
-    {graphMode ? <VelocityTimeline /> : <><div className="timeline-toolbar">
+    {s.timelineMode === 'value' ? <ValueTimeline /> : s.timelineMode === 'velocity' ? <VelocityTimeline /> : <><div className="timeline-toolbar">
       <TimelineTransport keyTimes={keyTimes} duration={duration} offset={offset} />
-      <div className="timeline-actions"><button className="button key-button" onClick={studio.addKey} disabled={(!s.project.camera && !s.project.objects.some(o => !o.hidden)) || s.playing}><Plus size={15} /> Add key</button></div>
-      <button className="button timeline-mode-switch" aria-label="Velocity timeline mode" aria-pressed="false" title="Edit velocity keyframes" onClick={() => studio.patch({ timelineMode: 'velocity', selectedKey: null, selectedVelocityKey: null, selectionActive: false })}><Activity size={14} />Velocity</button>
-      {!clip && <label className="duration-label">Duration <select aria-label="Timeline duration" value={s.project.duration} onChange={e => studio.duration(Number(e.target.value))}>{Array.from({ length: 9 }, (_, i) => i + 2).map(n => <option key={n} value={n}>{n} s</option>)}</select><ChevronDown size={11} /></label>}
+      <div className="timeline-actions"><button className="button key-button" aria-label="Add key" title="Add key" onClick={studio.addKey} disabled={(!s.project.camera && !s.project.objects.some(o => !o.hidden)) || s.playing}><Plus size={15} /><span>Add key</span></button></div>
+      <TimelineModeSelect />
+      {!clip && <label className="duration-label">Duration <select aria-label="Timeline duration" value={s.project.duration} onChange={e => studio.duration(Number(e.target.value))}>{Array.from({ length: 9 }, (_, i) => i + 2).map(n => <option key={n} value={n}>{n} s</option>)}</select></label>}
     </div>
     <div className="timeline-content"><div className="timeline-tracks">
       <div className="timeline-ruler"><div className="ruler-label">{clip ? 'Keyframes' : <select aria-label="Animated object" value={s.objectId} onChange={e => studio.selectObject(e.target.value)}>{s.project.camera && <option value={CAMERA_ID}>Camera</option>}{s.project.objects.filter(o => !o.hidden).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select>}</div><div className="ruler-ticks">{Array.from({ length: Math.floor(duration) + 1 }, (_, i) => <span key={i} style={{ left: `${i / duration * 100}%` }}>{i}<small>s</small></span>)}</div></div>

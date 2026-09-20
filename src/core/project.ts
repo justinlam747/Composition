@@ -1,10 +1,11 @@
 import { Euler, MathUtils, Matrix4, Quaternion, Vector3 } from 'three';
 import { validateVelocityKeys, velocitySceneTime, velocityTime, type VelocityKey, type VelocityTrack, type VelocityWindow } from './velocity';
+import { validateValueHandles, valueProgress, type Axis, type ValueHandles } from './valueGraph';
 
 export type Vec3 = [number, number, number];
 export type Channel = 'position' | 'rotation' | 'scale';
 export type Ease = 'linear' | 'smooth' | 'ease-in' | 'ease-out';
-export interface Keyframe { id: string; time: number; value: Vec3; ease: Ease; easePower?: number; rotationPath?: Vec3[] }
+export interface Keyframe { id: string; time: number; value: Vec3; ease: Ease; easePower?: number; rotationPath?: Vec3[]; valueHandles?: ValueHandles }
 export const MAX_ROTATION_PATH_POINTS = 4096;
 export interface Track { objectId: string; target: string; channel: Channel; keys: Keyframe[] }
 export interface AnimationAsset {
@@ -137,9 +138,12 @@ export function sampleTrack(track: Track | undefined, time: number, fallback: Ve
   const a = keys[next - 1], b = keys[next];
   let t = (time - a.time) / (b.time - a.time);
   t = easeProgress(a.ease, t, a.easePower);
-  if (track.channel === 'rotation' && b.rotationPath) return pointOnRotationPath(b.rotationPath, t).value;
+  const route = track.channel === 'rotation' && b.rotationPath ? pointOnRotationPath(b.rotationPath, t).value : undefined;
   // Numeric rotation keys retain their signed angles: 0 -> 360 is a full turn.
-  return a.value.map((v, i) => MathUtils.lerp(v, b.value[i], t)) as Vec3;
+  return a.value.map((v, i) => {
+    const progress = valueProgress(a, b, i as Axis, time);
+    return progress === undefined ? route?.[i] ?? MathUtils.lerp(v, b.value[i], t) : MathUtils.lerp(v, b.value[i], progress);
+  }) as Vec3;
 }
 export function easeProgress(ease: Ease, t: number, power = 2) {
   const exponent = Math.max(.25, Math.min(4, Number.isFinite(power) ? power : 2));
@@ -313,6 +317,7 @@ export function validateProject(input: unknown): Project {
         (key.easePower !== undefined && (!Number.isFinite(key.easePower) || key.easePower < .25 || key.easePower > 4)) ||
         !validVec(key.value) ||
         (track.channel === 'scale' && key.value.some(v => v < .05 || v > 10))) throw new Error('Invalid keyframe values.');
+      validateValueHandles(key.valueHandles);
       if (key.rotationPath !== undefined) {
         const path = key.rotationPath;
         if (track.channel !== 'rotation' || !previousValue || !Array.isArray(path) || path.length < 2 || path.length > MAX_ROTATION_PATH_POINTS ||

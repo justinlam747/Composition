@@ -14,6 +14,10 @@ export default function TimelinePanel() {
   const [collapsed, setCollapsed] = useState(false);
   const expandedHeight = Math.max(MIN_HEIGHT, Math.min(height, maxHeight));
 
+  useEffect(() => {
+    if (s.timelineMode === 'value') setHeight(current => Math.max(current, 300));
+  }, [s.timelineMode]);
+
   useLayoutEffect(() => {
     const editor = panel.current?.parentElement;
     if (!editor) return;

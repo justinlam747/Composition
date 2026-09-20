@@ -16,7 +16,7 @@ async function setup(page: Page, block = false) {
   await expect(page.getByRole('region', { name: 'Scene editor', exact: true })).toHaveAttribute('aria-busy', 'false');
   await page.getByRole('button', { name: 'Animate', exact: true }).click();
   if (block) await page.getByRole('button', { name: 'Move animation block', exact: true }).dblclick();
-  await page.getByRole('button', { name: 'Velocity timeline mode' }).click();
+  await page.getByLabel('Timeline mode', { exact: true }).selectOption('velocity');
   return project;
 }
 async function speed(page: Page, value: string) {
@@ -68,9 +68,9 @@ for (const width of [1440, 390]) test(`velocity-only timeline edits and retimes 
   const saved = (await state(page)).project;
   await page.evaluate(async () => { const path = '/src/core/store.ts'; (await import(path)).studio.persistNow(); });
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('take-one-scene-v1')!).velocities)).toEqual(saved.velocities);
-  await page.getByRole('button', { name: 'Velocity timeline mode' }).click();
+  await page.getByLabel('Timeline mode', { exact: true }).selectOption('keys');
   await page.reload(); await page.getByRole('button', { name: 'Animate', exact: true }).click();
-  await page.getByRole('button', { name: 'Velocity timeline mode' }).click();
+  await page.getByLabel('Timeline mode', { exact: true }).selectOption('velocity');
   expect((await state(page)).project.velocities).toEqual(saved.velocities);
   await page.getByRole('button', { name: 'Velocity key at 3.50 seconds', exact: true }).press('Enter');
   expect((await state(page)).project.tracks).toEqual(original.tracks);

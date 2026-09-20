@@ -4,6 +4,7 @@ import { CAMERA_ID, clipTimelineSceneTime, clipTimelineTime } from '../core/proj
 import { MAX_SPEED, velocityAt, type VelocityKey } from '../core/velocity';
 import { studio, useStudio } from '../core/store';
 import TimelineTransport from './TimelineTransport';
+import TimelineModeSelect from './TimelineModeSelect';
 
 const EMPTY_KEYS: VelocityKey[] = [];
 
@@ -57,7 +58,7 @@ export default function VelocityTimeline() {
     <div className="timeline-toolbar">
       <TimelineTransport keyTimes={keys.map(key => key.time)} duration={duration} offset={offset} velocity />
       <div className="timeline-actions"><button className="button key-button" aria-label="Add velocity key" disabled={s.playing} onClick={studio.addVelocityKey}><Plus size={15} /><span>Add key</span></button></div>
-      <button className="button timeline-mode-switch is-on" aria-label="Velocity timeline mode" aria-pressed="true" title="Switch to transform keyframes" onClick={() => studio.patch({ timelineMode: 'keys', selectedVelocityKey: null })}>Velocity</button>
+      <TimelineModeSelect />
     </div>
     <div className="timeline-content velocity-content"><div className="timeline-tracks">
       <div className="timeline-ruler"><div className="ruler-label">{clip ? 'Velocity' : <select aria-label="Animated object" value={s.objectId} onChange={event => studio.selectObject(event.target.value)}>{s.project.camera && <option value={CAMERA_ID}>Camera</option>}{s.project.objects.filter(object => !object.hidden).map(object => <option key={object.id} value={object.id}>{object.name}</option>)}</select>}</div>

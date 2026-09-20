@@ -74,7 +74,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
         if (!e.repeat) studio.togglePlay();
         return;
       }
-      if ((e.target as HTMLElement).matches('input,textarea,select') || menu) return;
+      if ((e.target as HTMLElement).closest('input,textarea,select,option') || menu) return;
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); e.shiftKey ? studio.redo() : studio.undo(); return; }
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { e.preventDefault(); studio.redo(); return; }
       if (e.ctrlKey || e.metaKey || e.altKey) return;

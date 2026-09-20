@@ -8,6 +8,7 @@ import { animationLibrary } from './animationLibrary';
 import { loadSpiderDemo } from './spiderDemo';
 import { savedSpiderAnimations } from './savedSpiderAnimations';
 import { MAX_SPEED, velocityAt, velocityTime, type VelocityKey } from './velocity';
+import { type Axis, type HandleSide, type Influences } from './valueGraph';
 
 const STORAGE = 'take-one-scene-v1';
 function restore(): Project | undefined { try { const raw = localStorage.getItem(STORAGE); return raw ? parseProject(raw) : undefined; } catch { return undefined; } }
@@ -18,7 +19,7 @@ export interface EditorState {
   status: string; undoCount: number; redoCount: number;
   selectedClip: string | null; editingClip: string | null;
   phoneControl: boolean;
-  timelineMode: 'keys' | 'velocity'; selectedVelocityKey: string | null;
+  timelineMode: 'keys' | 'velocity' | 'value'; selectedVelocityKey: string | null;
 }
 const draft = restore();
 let hasDraft = !!draft;
@@ -188,6 +189,67 @@ export const studio = {
     const sourceTime = clip ? clipSourceTime(clip, time) : motionTime(state.project, time, state.objectId);
     editKeys(project => moveKey(project, id, sourceTime));
     emit({ selectedKey: id, time: snapTime(clip ? clipSceneTime(clip, snapTime(sourceTime, clip.sourceDuration)) : motionSceneTime(state.project, snapTime(sourceTime, state.project.duration), state.objectId), state.project.duration) });
+  },
+  selectValueKey: (id: string) => {
+    const clip = keyScope(), tracks = clip?.tracks ?? state.project.tracks;
+    const track = tracks.find(t => t.objectId === state.objectId && t.target === state.selected && t.channel === state.channel);
+    const key = track?.keys.find(k => k.id === id);
+    if (!key) return false;
+    const time = snapTime(clip ? clipSceneTime(clip, key.time) : motionSceneTime(state.project, key.time, state.objectId), state.project.duration);
+    if (state.selectedKey !== id || state.selectedVelocityKey !== null || state.playing || state.time !== time) {
+      emit({ selectedKey: id, selectedVelocityKey: null, playing: false, time });
+    }
+    return true;
+  },
+  setValueHandle: (id: string, axis: Axis, side: HandleSide, influence: number) => {
+    if (state.exporting || !Number.isFinite(influence) || ![0, 1, 2].includes(axis) || !['in', 'out'].includes(side)) return;
+    if (!studio.selectValueKey(id)) return;
+    const clamped = Math.max(.01, Math.min(1, influence));
+    const existing = (keyScope()?.tracks ?? state.project.tracks).flatMap(track => track.keys).find(key => key.id === id);
+    if (!existing || existing.valueHandles?.[side]?.[axis] === clamped) return;
+    editKeys(project => ({ ...project, tracks: project.tracks.map(track => ({ ...track, keys: track.keys.map(key => {
+      if (key.id !== id) return key;
+      const values: Influences = [...key.valueHandles?.[side] ?? [null, null, null]];
+      values[axis] = clamped;
+      return { ...key, valueHandles: { ...key.valueHandles, [side]: values } };
+    }) })) }));
+  },
+  resetValueHandles: (id: string, axis: Axis) => {
+    if (state.exporting || ![0, 1, 2].includes(axis)) return;
+    if (!studio.selectValueKey(id)) return;
+    if (!(keyScope()?.tracks ?? state.project.tracks).some(track => track.keys.some(key => key.id === id))) return;
+    editKeys(project => ({ ...project, tracks: project.tracks.map(track => ({ ...track, keys: track.keys.map(key => {
+      if (key.id !== id) return key;
+      const valueHandles = { ...key.valueHandles };
+      for (const side of ['in', 'out'] as const) if (valueHandles[side]) {
+        const values: Influences = [...valueHandles[side]!]; values[axis] = null;
+        if (values.every(value => value === null)) delete valueHandles[side]; else valueHandles[side] = values;
+      }
+      const next: typeof key = { ...key, valueHandles }; if (!Object.keys(valueHandles).length) delete next.valueHandles;
+      return next;
+    }) })) }));
+  },
+  updateValueKey: (id: string, sceneTime: number, axis: Axis, value: number) => {
+    if (state.exporting || ![sceneTime, value].every(Number.isFinite) || ![0, 1, 2].includes(axis)) return;
+    if (!studio.selectValueKey(id)) return;
+    const clip = keyScope();
+    const at = snapTime(clip ? Math.max(clip.start, Math.min(clip.start + clip.duration, sceneTime)) : sceneTime, state.project.duration);
+    const existing = (clip?.tracks ?? state.project.tracks).flatMap(track => track.keys).find(key => key.id === id);
+    if (!existing) return;
+    const existingTime = clip ? clipSceneTime(clip, existing.time) : motionSceneTime(state.project, existing.time, state.objectId);
+    const original = (clip ? transaction?.clips?.find(value => value.id === clip.id)?.tracks : transaction?.tracks)?.flatMap(track => track.keys).find(key => key.id === id);
+    const originalTime = original ? clip ? clipSceneTime(clip, original.time) : motionSceneTime(state.project, original.time, state.objectId) : undefined;
+    const sourceTime = original && originalTime !== undefined && Math.abs(sceneTime - originalTime) < 1e-8 ? original.time
+      : Math.abs(sceneTime - existingTime) < 1e-8 ? existing.time : clip ? clipSourceTime(clip, at) : motionTime(state.project, at, state.objectId);
+    editKeys((project, _time, baseline) => {
+      const next = moveKey(baseline ?? project, id, sourceTime);
+      const track = next.tracks.find(t => t.keys.some(key => key.id === id))!, key = track.keys.find(key => key.id === id)!;
+      const updated = [...key.value] as Vec3;
+      updated[axis] = Math.max(track.channel === 'scale' ? .05 : -10000, Math.min(track.channel === 'scale' ? 10 : 10000, value));
+      return editTransformKey(next, { objectId: track.objectId, target: track.target, channel: track.channel, time: key.time, value: updated });
+    });
+    const key = (keyScope()?.tracks ?? state.project.tracks).flatMap(track => track.keys).find(key => key.id === id);
+    if (key) emit({ selectedKey: id, time: snapTime(clip ? clipSceneTime(clip, key.time) : motionSceneTime(state.project, key.time, state.objectId), state.project.duration) });
   },
   addVelocityKey: () => {
     const { keys, time } = velocityScope();
