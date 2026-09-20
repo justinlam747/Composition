@@ -78,18 +78,19 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); e.shiftKey ? studio.redo() : studio.undo(); return; }
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { e.preventDefault(); studio.redo(); return; }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.code === 'KeyK') studio.addKey();
+      if (e.code === 'KeyK') { studio.get().timelineMode === 'velocity' && panel === 'animate' ? studio.addVelocityKey() : studio.addKey(); }
       if (e.code === 'KeyF') studio.patch({ frameRequest: studio.get().frameRequest + 1 });
       if (e.code === 'KeyG') studio.setMode('translate');
       if (e.code === 'KeyR') studio.setMode('rotate');
       if (e.code === 'KeyS' && studio.get().camera !== 'shot') studio.setMode('scale');
+      if ((e.code === 'Delete' || e.code === 'Backspace') && panel === 'animate' && studio.get().timelineMode === 'velocity') { e.preventDefault(); studio.deleteVelocityKey(); return; }
       if ((e.code === 'Delete' || e.code === 'Backspace') && studio.get().selectedKey) { e.preventDefault(); studio.deleteKey(); return; }
       if ((e.code === 'Delete' || e.code === 'Backspace') && studio.get().selectedClip) { e.preventDefault(); studio.deleteClip(); return; }
       if ((e.code === 'Delete' || e.code === 'Backspace') && !studio.get().selectedKey && studio.get().selectionActive) { e.preventDefault(); studio.removeObject(); }
       if (e.code === 'Escape') studio.patch({ selectionActive: false, preview: null });
     }
     window.addEventListener('keydown', keyboard); return () => window.removeEventListener('keydown', keyboard);
-  }, [active, dialogOpen, menu, saving, naming]);
+  }, [active, dialogOpen, menu, saving, naming, panel]);
   useEffect(() => {
     if (!dialogOpen) return;
     studio.patch({ playing: false });

@@ -1,4 +1,5 @@
 import { Euler, MathUtils, Matrix4, Quaternion, Vector3 } from 'three';
+import { validateVelocityKeys, velocitySceneTime, velocityTime, type VelocityKey, type VelocityTrack, type VelocityWindow } from './velocity';
 
 export type Vec3 = [number, number, number];
 export type Channel = 'position' | 'rotation' | 'scale';
@@ -10,11 +11,15 @@ export interface AnimationAsset {
   id: string; name: string; kind: SceneObject['kind'] | 'camera'; source: 'prepared' | 'ai' | 'edited';
   duration: number; tracks: Track[]; web?: { anchor: Vec3; start: number; end: number };
   range?: { start: number; end: number; duration: number };
+  velocityKeys?: VelocityKey[];
+  velocityWindow?: VelocityWindow;
 }
 export interface AnimationClip {
   id: string; name: string; objectId: string; source: AnimationAsset['source'];
   start: number; duration: number; sourceDuration: number; sourceStart: number; sourceEnd: number;
   tracks: Track[]; web?: AnimationAsset['web'];
+  velocityKeys?: VelocityKey[];
+  velocityWindow?: VelocityWindow;
 }
 export interface SceneObject {
   id: string; kind: 'humanoid' | 'box'; name: string;
@@ -40,6 +45,7 @@ export interface Project {
   demo: boolean;
   tracks: Track[];
   clips?: AnimationClip[];
+  velocities?: VelocityTrack[];
   camera?: ShotCamera;
   generation?: Generation;
 }
@@ -145,7 +151,7 @@ export function sample(project: Project, target: string, channel: Channel, time:
   const fallback = cameraValue ?? (target === 'model' && object ? object[channel] : defaultValue(target, channel));
   const clip = clipAt(project, time, objectId);
   return sampleTrack((clip?.tracks ?? project.tracks).find(t => t.objectId === objectId && t.target === target && t.channel === channel),
-    clip ? clipSourceTime(clip, time) : time, fallback);
+    clip ? clipSourceTime(clip, time) : motionTime(project, time, objectId), fallback);
 }
 // Between blocks, hold the previous end pose. Motion only advances inside a block.
 export function clipAt(project: Project, time: number, objectId: string) {
@@ -153,12 +159,24 @@ export function clipAt(project: Project, time: number, objectId: string) {
   for (const clip of project.clips ?? []) if (clip.objectId === objectId && clip.start <= time && (!found || clip.start > found.start)) found = clip;
   return found;
 }
-export const clipSourceTime = (clip: AnimationClip, time: number) => clip.sourceStart + Math.max(0, Math.min(1, (time - clip.start) / clip.duration)) * (clip.sourceEnd - clip.sourceStart);
-export const clipSceneTime = (clip: AnimationClip, time: number) => clip.start + (time - clip.sourceStart) / (clip.sourceEnd - clip.sourceStart) * clip.duration;
+export const clipTimelineTime = (clip: AnimationClip, time: number) => clip.sourceStart + Math.max(0, Math.min(1, (time - clip.start) / clip.duration)) * (clip.sourceEnd - clip.sourceStart);
+export const clipTimelineSceneTime = (clip: AnimationClip, time: number) => clip.start + (time - clip.sourceStart) / (clip.sourceEnd - clip.sourceStart) * clip.duration;
+export const clipSourceTime = (clip: AnimationClip, time: number) => velocityTime(clip.velocityKeys, clipTimelineTime(clip, time), clip.sourceDuration, clip.velocityWindow);
+export const clipSceneTime = (clip: AnimationClip, time: number) => clipTimelineSceneTime(clip, velocitySceneTime(clip.velocityKeys, time, clip.sourceDuration, clip.velocityWindow));
+export function motionTime(project: Project, time: number, objectId: string) {
+  const track = project.velocities?.find(track => track.objectId === objectId);
+  const duration = track?.duration ?? project.duration;
+  return track?.keys.length && time <= duration ? velocityTime(track.keys, time, duration) : time;
+}
+export function motionSceneTime(project: Project, time: number, objectId: string) {
+  const track = project.velocities?.find(track => track.objectId === objectId);
+  return track?.keys.length ? velocitySceneTime(track.keys, time, track.duration ?? project.duration) : time;
+}
 // Capture the incoming route up to the playhead before extending it with a drag.
 export function rotationPathTo(project: Project, target: string, time: number, objectId = HUMANOID_ID): Vec3[] {
   const clip = clipAt(project, time, objectId);
-  if (clip) return rotationPathTo({ ...project, clips: undefined, tracks: clip.tracks, duration: clip.sourceDuration }, target, clipSourceTime(clip, time), objectId);
+  if (clip) return rotationPathTo({ ...project, clips: undefined, velocities: undefined, tracks: clip.tracks, duration: clip.sourceDuration }, target, clipSourceTime(clip, time), objectId);
+  if (project.velocities?.some(track => track.objectId === objectId)) return rotationPathTo({ ...project, velocities: undefined }, target, motionTime(project, time, objectId), objectId);
   const at = snapTime(time, project.duration);
   const track = project.tracks.find(t => t.objectId === objectId && t.target === target && t.channel === 'rotation');
   const previous = track?.keys.filter(k => k.time < at).at(-1);
@@ -271,6 +289,15 @@ export function validateProject(input: unknown): Project {
     (p.generation.baselineAssetId !== undefined && (!validId(p.generation.baselineAssetId) || !p.generation.imageSources?.[p.generation.baselineAssetId])) ||
     (p.generation.instructions !== undefined && (typeof p.generation.instructions !== 'string' || p.generation.instructions.length > 4000)))) throw new Error('Invalid generation assets.');
   const known = new Set(BONES.map(b => b.id)), seenTracks = new Set<string>(), seenKeys = new Set<string>();
+  if (p.velocities !== undefined) {
+    if (!Array.isArray(p.velocities) || p.velocities.length > 33) throw new Error('Invalid velocity tracks.');
+    const ids = new Set<string>();
+    for (const track of p.velocities) {
+      if (!track || !(objects.has(track.objectId) || track.objectId === CAMERA_ID && p.camera) || ids.has(track.objectId) || !Array.isArray(track.keys)) throw new Error('Invalid velocity track.');
+      if (track.duration !== undefined && (!Number.isFinite(track.duration) || track.duration <= 0 || track.duration > p.duration)) throw new Error('Invalid velocity duration.');
+      validateVelocityKeys(track.keys, track.duration ?? p.duration); ids.add(track.objectId);
+    }
+  }
   for (const track of p.tracks) {
     if (!track || !['position', 'rotation', 'scale'].includes(track.channel) || !Array.isArray(track.keys) || track.keys.length > 1000 ||
       (track.objectId === CAMERA_ID ? (!p.camera || track.target !== 'model' || track.channel === 'scale') :
@@ -309,7 +336,12 @@ export function validateProject(input: unknown): Project {
         clip.sourceStart < 0 || clip.sourceEnd > clip.sourceDuration + 1e-8 || clip.sourceEnd - clip.sourceStart < 1e-8 ||
         (ends.get(clip.objectId) ?? 0) > clip.start + 1e-8 || !Array.isArray(clip.tracks)) throw new Error('Invalid or overlapping animation blocks.');
       if (clip.tracks.some(t => t.objectId !== clip.objectId || t.keys.some(k => k.time > clip.sourceDuration + 1e-8))) throw new Error('Invalid animation block tracks.');
-      validateProject({ ...p, clips: undefined, duration: Math.max(2, clip.sourceDuration), tracks: clip.tracks });
+      validateProject({ ...p, clips: undefined, velocities: undefined, duration: Math.max(2, clip.sourceDuration), tracks: clip.tracks });
+      validateVelocityKeys(clip.velocityKeys, clip.sourceDuration);
+      if (clip.velocityWindow) {
+        const { start, end, from, to } = clip.velocityWindow;
+        if (![start, end, from, to].every(Number.isFinite) || start < 0 || end > clip.sourceDuration || end <= start || from < 0 || to < from || to > clip.sourceDuration) throw new Error('Invalid velocity window.');
+      } else if (clip.velocityWindow !== undefined) throw new Error('Invalid velocity window.');
       if (clip.web && (!validVec(clip.web.anchor) || !Number.isFinite(clip.web.start) || !Number.isFinite(clip.web.end) || clip.web.start < 0 || clip.web.end <= clip.web.start || clip.web.end > clip.sourceDuration)) throw new Error('Invalid web timing.');
       ids.add(clip.id); ends.set(clip.objectId, clip.start + clip.duration);
     }

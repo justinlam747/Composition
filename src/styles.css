@@ -195,31 +195,27 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
 .key-options select { font-size: 11px; color: var(--muted); }
 .key-options select:disabled { opacity: .4; }
 .key-options .icon-button { height: 33px; width: 33px; }
-.velocity-editor { flex: 0 0 86px; display: grid; grid-template-columns: 155px minmax(150px, 1fr) 185px; align-items: center; gap: 12px; padding: 8px 12px; border-top: 1px solid var(--line); background: color-mix(in oklab, var(--accent-soft) 42%, var(--panel)); }
-.velocity-heading { display: grid; gap: 3px; font-size: 10px; color: var(--text); }
-.velocity-heading small { color: var(--muted); line-height: 1.35; }
-.velocity-graph { width: 100%; height: 60px; overflow: visible; }
-.velocity-graph.is-editable { cursor: ns-resize; touch-action: none; }
-.velocity-grid { fill: none; stroke: var(--line); stroke-width: .7; opacity: .8; }
-.velocity-line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
-.velocity-handle { fill: var(--panel); stroke: var(--accent); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
-.velocity-power { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; white-space: nowrap; }
-.velocity-power input { width: 100%; accent-color: var(--accent); }
-.velocity-power output { min-width: 29px; color: var(--text); font-variant-numeric: tabular-nums; }
-.graph-mode-button { margin-left: 2px; }
-.velocity-mode { position: relative; min-height: 205px; padding: 16px 18px 26px; margin: 0 var(--rail-right) 0 var(--label-width); background: color-mix(in oklab, var(--accent-soft) 25%, var(--panel)); }
-.velocity-mode-heading { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; font-size: 11px; }
-.velocity-mode-heading strong { color: var(--text); font-size: 12px; }
-.velocity-mode-heading span { color: var(--muted); }
-.velocity-mode-graph { display: block; width: 100%; height: 145px; overflow: visible; cursor: crosshair; touch-action: none; }
-.velocity-mode-grid { fill: none; stroke: var(--line); stroke-width: .55; opacity: .8; }
-.velocity-mode-line { fill: none; stroke: var(--accent); stroke-width: 1.6; vector-effect: non-scaling-stroke; pointer-events: none; }
-.velocity-mode-handle { fill: var(--accent); stroke: var(--panel); stroke-width: 1.2; vector-effect: non-scaling-stroke; pointer-events: none; }
-.velocity-mode-key { fill: var(--panel); stroke: var(--muted); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
-.velocity-mode-key.is-selected { fill: var(--accent); stroke: var(--text); }
-.velocity-mode-playhead { stroke: var(--red); stroke-width: .9; vector-effect: non-scaling-stroke; pointer-events: none; }
-.velocity-mode-scale { display: flex; justify-content: space-between; color: var(--faint); font-size: 9px; font-variant-numeric: tabular-nums; }
-.velocity-mode-scrubber { position: absolute; left: 18px; right: 18px; bottom: 6px; width: calc(100% - 36px); opacity: .25; accent-color: var(--accent); }
+.timeline-mode-switch { min-height: 32px; padding: 6px 9px; font-size: 11px; white-space: nowrap; }
+.timeline-mode-switch.is-on { color: var(--accent); background: var(--accent-soft); }
+.velocity-content .timeline-tracks { height: 100%; min-height: 100px; display: flex; flex-direction: column; }
+.velocity-content .timeline-ruler { flex-shrink: 0; }
+.velocity-lane { display: flex; flex: 1; min-height: 64px; padding-right: var(--rail-right); }
+.velocity-lane-label { position: relative; flex: 0 0 var(--label-width); border-right: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+.velocity-lane-label strong { position: absolute; top: 50%; left: 20px; transform: translateY(-50%); font-weight: 500; }
+.velocity-lane-label span { position: absolute; right: 10px; font-size: 9px; color: var(--faint); }
+.velocity-lane-label span:nth-child(2) { top: 9px; }
+.velocity-lane-label span:last-child { bottom: 9px; }
+.velocity-rail { flex: 1; min-width: 0; position: relative; touch-action: none; background-image: linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 20% 100%; }
+.velocity-curve { position: absolute; inset: 14px 0; width: 100%; height: calc(100% - 28px); overflow: visible; pointer-events: none; }
+.velocity-curve polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.velocity-curve .velocity-grid { fill: none; stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.velocity-key { position: absolute; z-index: 5; width: 28px; height: 28px; transform: translate(-50%, -50%); display: grid; place-items: center; color: var(--accent); cursor: move; touch-action: none; }
+.velocity-key.is-selected svg { stroke: var(--text); }
+.velocity-key:focus-visible { outline: 2px solid var(--accent); border-radius: 6px; }
+.velocity-empty { position: absolute; top: 12px; left: 16px; color: var(--muted); font-size: 10px; pointer-events: none; }
+.velocity-footer .key-options { gap: 10px; }
+.velocity-footer label { display: flex; align-items: center; gap: 5px; }
+.velocity-footer input { width: 54px; padding: 4px; border: 1px solid var(--line); border-radius: 5px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text); }
 .modal-backdrop { position: fixed; inset: 0; z-index: 25; display: grid; place-items: center; padding: 20px; background: oklch(25% .01 90 / .27); }
 .modal { position: relative; width: min(450px, 100%); padding: 32px; border-radius: 24px; border: 1px solid var(--line); background: var(--panel); box-shadow: 0 20px 80px oklch(25% .01 90 / .15); max-height: 90dvh; overflow: auto; }
 .modal-close { position: absolute; top: 13px; right: 13px; }
@@ -270,13 +266,12 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
   .duration-label svg { width: 9px; }
   .key-button { font-size: 10px; min-height: 32px; padding: 7px 9px; gap: 3px; }
   .timeline-lane { height: 32px; }
-  .velocity-editor { grid-template-columns: 1fr 1.5fr; gap: 8px; padding: 7px 8px; }
-  .velocity-heading { grid-column: 1; }
-  .velocity-graph { grid-column: 2; grid-row: 1 / span 2; }
-  .velocity-power { grid-column: 1; }
-  .velocity-mode { min-height: 180px; margin: 0 var(--rail-right); padding: 12px 8px 24px; }
-  .velocity-mode-graph { height: 125px; }
-  .velocity-mode-scrubber { left: 8px; right: 8px; width: calc(100% - 16px); }
+  .timeline-mode-switch { padding: 5px 6px; font-size: 10px; }
+  .timeline-mode-switch svg { display: none; }
+  .velocity-lane-label strong { left: 10px; }
+  .velocity-footer > span { max-width: 95px; font-size: 9px; }
+  .velocity-footer .key-options { gap: 5px; }
+  .velocity-footer input { width: 46px; }
   .lane-label { padding: 0 10px; gap: 6px; font-size: 9px; }
   .ruler-label { padding: 0 10px; font-size: 9px; }
   .timeline-ruler { height: 29px; }

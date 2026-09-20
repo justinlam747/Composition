@@ -18,7 +18,7 @@ export interface Proposal { id: string; mode: 'live' | 'demo'; baseSignature: st
 
 // A change detector, not a security digest. Excludes output metadata so saving a guide never stales a proposal.
 export function sceneSignature(project: Project): string {
-  const text = JSON.stringify({ id: project.id, duration: project.duration, objects: project.objects, tracks: project.tracks, ...(project.camera ? { camera: project.camera } : {}), ...(project.clips?.length ? { clips: project.clips } : {}) });
+  const text = JSON.stringify({ id: project.id, duration: project.duration, objects: project.objects, tracks: project.tracks, ...(project.camera ? { camera: project.camera } : {}), ...(project.clips?.length ? { clips: project.clips } : {}), ...(project.velocities?.length ? { velocities: project.velocities } : {}) });
   let hash = 2166136261, second = 5381;
   for (let i = 0; i < text.length; i++) { hash = Math.imul(hash ^ text.charCodeAt(i), 16777619); second = Math.imul(second, 33) ^ text.charCodeAt(i); }
   return `${text.length}-${hash >>> 0}-${second >>> 0}`;

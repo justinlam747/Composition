@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { type AnimationAsset, type Channel, type Ease, type Project, type Vec3, type ShotCamera, CAMERA_ID, clipAt, clipSceneTime, clipSourceTime, hasTarget, primaryTarget, makeCamera, HUMANOID_ID, makeObject, validateProject, type SceneObject, type Generation, makeProject, moveKey, parseProject, sample, seedIdle, snapTime } from './project';
+import { type AnimationAsset, type Channel, type Project, type Vec3, type ShotCamera, CAMERA_ID, clipAt, clipSceneTime, clipSourceTime, hasTarget, primaryTarget, makeCamera, HUMANOID_ID, makeObject, validateProject, type SceneObject, type Generation, makeProject, moveKey, parseProject, sample, seedIdle, snapTime, clipTimelineTime, clipTimelineSceneTime, motionTime, motionSceneTime, uid } from './project';
 import { applyProposal, type Proposal } from './proposals';
 import { simplifyRotationPath } from './rotationPath';
 import { editTransformKey } from './keyEditing';
@@ -7,6 +7,7 @@ import { animationFromClip, animationFromTracks, clipPreview, clipProject, inser
 import { animationLibrary } from './animationLibrary';
 import { loadSpiderDemo } from './spiderDemo';
 import { savedSpiderAnimations } from './savedSpiderAnimations';
+import { MAX_SPEED, velocityAt, velocityTime, type VelocityKey } from './velocity';
 
 const STORAGE = 'take-one-scene-v1';
 function restore(): Project | undefined { try { const raw = localStorage.getItem(STORAGE); return raw ? parseProject(raw) : undefined; } catch { return undefined; } }
@@ -17,6 +18,7 @@ export interface EditorState {
   status: string; undoCount: number; redoCount: number;
   selectedClip: string | null; editingClip: string | null;
   phoneControl: boolean;
+  timelineMode: 'keys' | 'velocity'; selectedVelocityKey: string | null;
 }
 const draft = restore();
 let hasDraft = !!draft;
@@ -26,6 +28,7 @@ let state: EditorState = {
   mode: 'translate', space: 'world', showRig: false, showGrid: true, selectionActive: false, camera: 'orbit', frameRequest: 0,
   status: 'Ready. Start with a pose, or load the demo idle.', undoCount: 0, redoCount: 0,
   selectedClip: null, editingClip: null, phoneControl: false,
+  timelineMode: 'keys', selectedVelocityKey: null,
 };
 const listeners = new Set<() => void>();
 const past: Project[] = [], future: Project[] = [];
@@ -51,9 +54,9 @@ if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', flushPersistence);
   import.meta.hot?.dispose(() => { window.removeEventListener('pagehide', flushPersistence); clearTimeout(saveTimer); });
 }
-function commit(project: Project, message?: string) {
+function commit(project: Project, message?: string, selection?: Partial<Pick<EditorState, 'selectedKey' | 'selectedVelocityKey' | 'time'>>) {
   if (!transaction) { past.push(state.project); if (past.length > 60) past.shift(); future.length = 0; }
-  emit({ project, preview: null, playing: false, selectedKey: null, undoCount: past.length, redoCount: future.length, ...(message ? { status: message } : {}) });
+  emit({ project, preview: null, playing: false, selectedKey: null, selectedVelocityKey: null, undoCount: past.length, redoCount: future.length, ...(message ? { status: message } : {}), ...selection });
   persist();
 }
 function restoreHistory(snapshot: Project): Project {
@@ -68,14 +71,41 @@ function keyScope() {
   if (!clip || clip.objectId !== state.objectId || state.time > clip.start + clip.duration + 1e-8) return undefined;
   return clip;
 }
+function poseTime(clip: ReturnType<typeof keyScope>, objectId = state.objectId, target = state.selected, channel = state.channel) {
+  const selected = (clip?.tracks ?? state.project.tracks).find(track => track.objectId === objectId && track.target === target && track.channel === channel)?.keys.find(key => key.id === state.selectedKey);
+  const selectedSceneTime = selected ? clip ? clipSceneTime(clip, selected.time) : motionSceneTime(state.project, selected.time, objectId) : -1;
+  if (selected && Math.abs(snapTime(selectedSceneTime, state.project.duration) - state.time) < 1e-8) return { time: selected.time, selected };
+  return { time: clip ? clipSourceTime(clip, state.time) : motionTime(state.project, state.time, objectId), selected: undefined };
+}
 function editKeys(operation: (project: Project, time: number, baseline?: Project) => Project, message?: string) {
   const clip = keyScope();
   if (!clip && state.project.clips?.some(value => value.objectId === state.objectId)) { emit({ status: 'Open an animation block to edit its keys.' }); return; }
-  const time = clip ? clipSourceTime(clip, state.time) : state.time;
+  const { time, selected } = poseTime(clip);
   const baselineClip = transaction?.clips?.find(value => value.id === clip?.id);
-  const project = operation(clip ? clipProject(state.project, clip) : state.project, time,
-    transaction ? baselineClip ? clipProject(transaction, baselineClip) : transaction : undefined);
-  commit(clip ? replaceClipTracks(state.project, clip.id, project.tracks) : project, message);
+  const project = operation(clip ? clipProject(state.project, clip) : { ...state.project, velocities: undefined }, time,
+    transaction ? baselineClip ? clipProject(transaction, baselineClip) : { ...transaction, velocities: undefined } : undefined);
+  commit(clip ? replaceClipTracks(state.project, clip.id, project.tracks) : { ...project, velocities: state.project.velocities }, message,
+    selected && project.tracks.some(track => track.keys.some(key => key.id === selected.id)) ? { selectedKey: selected.id } : undefined);
+}
+function velocityScope() {
+  const clip = state.project.clips?.find(value => value.id === state.editingClip);
+  return { clip, keys: clip ? clip.velocityKeys ?? [] : state.project.velocities?.find(track => track.objectId === state.objectId)?.keys ?? [],
+    time: clip ? clipTimelineTime(clip, state.time) : state.time };
+}
+function editVelocity(keys: VelocityKey[], selected: string | null, sceneTime = state.time) {
+  if (state.exporting || !hasTarget(state.project, state.objectId)) return;
+  const { clip } = velocityScope();
+  const current = state.project.velocities?.find(track => track.objectId === state.objectId);
+  // Once a split is edited, pin its original boundary poses while reshaping the
+  // speed inside that window. Unedited splits retain their parent's exact map.
+  const start = clip ? Math.max(clip.sourceStart, clip.velocityWindow?.start ?? 0) : 0;
+  const end = clip ? Math.min(clip.sourceEnd, clip.velocityWindow?.end ?? clip.sourceDuration) : 0;
+  const window = clip && end > start && (start !== (clip.velocityWindow?.start ?? 0) || end !== (clip.velocityWindow?.end ?? clip.sourceDuration))
+    ? { start, end, from: velocityTime(clip.velocityKeys, start, clip.sourceDuration, clip.velocityWindow), to: velocityTime(clip.velocityKeys, end, clip.sourceDuration, clip.velocityWindow) } : clip?.velocityWindow;
+  const project = clip ? { ...state.project, clips: state.project.clips?.map(value => value.id === clip.id ? { ...value, velocityKeys: keys, velocityWindow: window } : value) }
+    : { ...state.project, velocities: [...state.project.velocities?.filter(track => track.objectId !== state.objectId) ?? [],
+      ...(keys.length ? [{ objectId: state.objectId, keys, duration: Math.max(current?.duration ?? state.project.duration, ...keys.map(key => key.time)) }] : [])] };
+  commit(project, undefined, { selectedVelocityKey: selected, time: snapTime(sceneTime, state.project.duration) });
 }
 function tryClipEdit(operation: () => Project, message: string) {
   try { commit(operation(), message); return true; }
@@ -100,14 +130,15 @@ export const studio = {
     emit({ project, preview: null, playing: false, time: 0, objectId: primaryTarget(project), selected: 'model',
       channel: 'position', mode: 'translate', space: 'world', selectedKey: null, selectedClip: null, editingClip: null,
       selectionActive: false, camera: 'orbit', undoCount: 0, redoCount: 0, status: 'Project opened.' });
+    emit({ timelineMode: 'keys', selectedVelocityKey: null });
     flushPersistence();
   },
   begin: () => { if (!transaction) transaction = state.project; },
   end: () => {
     if (transaction && transaction !== state.project) {
-      if (state.channel === 'rotation') {
+      if (state.channel === 'rotation' && state.timelineMode !== 'velocity') {
         const clip = keyScope(), tracks = clip?.tracks ?? state.project.tracks;
-        const time = clip ? clipSourceTime(clip, state.time) : state.time;
+        const { time } = poseTime(clip);
         const track = tracks.find(t => t.objectId === state.objectId && t.target === state.selected && t.channel === 'rotation');
         const index = track?.keys.findIndex(k => Math.abs(k.time - time) < 1 / 60) ?? -1;
         if (track && index >= 0) {
@@ -154,9 +185,38 @@ export const studio = {
   addKey: () => studio.setValue(sample(clipPreview(state.project, state.editingClip), state.selected, state.channel, state.time, state.objectId)),
   moveKey: (id: string, time: number) => {
     const clip = keyScope();
-    const sourceTime = clip ? Math.max(clip.sourceStart, Math.min(clip.sourceEnd, clipSourceTime(clip, time))) : time;
+    const sourceTime = clip ? clipSourceTime(clip, time) : motionTime(state.project, time, state.objectId);
     editKeys(project => moveKey(project, id, sourceTime));
-    emit({ selectedKey: id, time: snapTime(clip ? clipSceneTime(clip, snapTime(sourceTime, clip.sourceDuration)) : time, state.project.duration) });
+    emit({ selectedKey: id, time: snapTime(clip ? clipSceneTime(clip, snapTime(sourceTime, clip.sourceDuration)) : motionSceneTime(state.project, snapTime(sourceTime, state.project.duration), state.objectId), state.project.duration) });
+  },
+  addVelocityKey: () => {
+    const { keys, time } = velocityScope();
+    const existing = keys.find(key => Math.abs(key.time - time) < 1e-8);
+    if (existing) { emit({ selectedVelocityKey: existing.id }); return; }
+    if (keys.length >= 1000) return;
+    const key = { id: uid(), time, speed: velocityAt(keys, time) };
+    editVelocity([...keys, key].sort((a, b) => a.time - b.time), key.id);
+  },
+  selectVelocityKey: (id: string) => {
+    const { keys, clip } = velocityScope(), key = keys.find(value => value.id === id);
+    if (key) emit({ selectedVelocityKey: id, selectedKey: null, playing: false,
+      time: snapTime(clip ? clipTimelineSceneTime(clip, key.time) : key.time, state.project.duration) });
+  },
+  updateVelocityKey: (id: string, sceneTime: number, speed: number) => {
+    if (!Number.isFinite(sceneTime) || !Number.isFinite(speed)) return;
+    const { keys, clip } = velocityScope();
+    if (!keys.some(key => key.id === id)) return;
+    const baseline = clip ? transaction?.clips?.find(value => value.id === clip.id)?.velocityKeys : transaction?.velocities?.find(track => track.objectId === state.objectId)?.keys;
+    const source = baseline?.some(key => key.id === id) ? baseline : keys;
+    const at = snapTime(clip ? Math.max(clip.start, Math.min(clip.start + clip.duration, sceneTime)) : sceneTime, state.project.duration);
+    const time = clip ? clipTimelineTime(clip, at) : at;
+    const updated = source.filter(key => key.id === id || Math.abs(key.time - time) > 1e-8)
+      .map(key => key.id === id ? { ...key, time, speed: Math.max(0, Math.min(MAX_SPEED, speed)) } : key).sort((a, b) => a.time - b.time);
+    if (keys.length !== updated.length || keys.some((key, index) => key.id !== updated[index].id || key.time !== updated[index].time || key.speed !== updated[index].speed)) editVelocity(updated, id, at);
+  },
+  deleteVelocityKey: () => {
+    const { keys } = velocityScope();
+    if (keys.some(key => key.id === state.selectedVelocityKey)) editVelocity(keys.filter(key => key.id !== state.selectedVelocityKey), null);
   },
   deleteKey: () => {
     if (!state.selectedKey) return;
@@ -165,28 +225,15 @@ export const studio = {
       const updated = { ...k }; delete updated.rotationPath; return updated;
     }) })).filter(t => t.keys.length) }), 'Keyframe deleted.');
   },
-  ease: (ease: Ease) => {
-    if (!state.selectedKey) return;
-    const id = state.selectedKey;
-    editKeys(project => ({ ...project, tracks: project.tracks.map(t => ({ ...t, keys: t.keys.map(k => k.id === id ? { ...k, ease } : k) })) }));
-    emit({ selectedKey: id });
-  },
-  easePower: (power: number) => {
-    if (!state.selectedKey) return;
-    const id = state.selectedKey;
-    const value = Math.max(.25, Math.min(4, power));
-    editKeys(project => ({ ...project, tracks: project.tracks.map(t => ({ ...t, keys: t.keys.map(k => k.id === id ? { ...k, ease: 'ease-in' as const, easePower: value } : k) })) }));
-    emit({ selectedKey: id });
-  },
   demo: () => {
     try { commit(seedIdle(state.project), 'Demo idle loaded. These are editable sample keys, not live AI output.'); emit({ time: 0, objectId: HUMANOID_ID, selected: 'chest', channel: 'rotation', mode: 'rotate', showRig: true, selectionActive: false }); }
     catch (error) { emit({ status: (error as Error).message }); }
   },
   disableDemo: () => commit({ ...state.project, demo: false }, 'Demo mode off. Your scene and keyframes are kept.'),
-  clear: () => { commit({ ...state.project, tracks: [], clips: [], demo: false }, 'All motion cleared. The character is now in its static rest pose.'); emit({ time: 0 }); },
+  clear: () => { commit({ ...state.project, tracks: [], clips: [], velocities: undefined, demo: false }, 'All motion cleared. The character is now in its static rest pose.'); emit({ time: 0 }); },
   selectClip: (id: string, edit = false) => {
     const clip = state.project.clips?.find(value => value.id === id); if (!clip) return;
-    emit({ selectedClip: id, editingClip: edit ? id : null, selectedKey: null, objectId: clip.objectId, selected: 'model', channel: 'position', mode: 'translate',
+    emit({ selectedClip: id, editingClip: edit ? id : null, selectedKey: null, selectedVelocityKey: null, objectId: clip.objectId, selected: 'model', channel: 'position', mode: 'translate',
       time: Math.max(clip.start, Math.min(clip.start + clip.duration, state.time)), playing: false, selectionActive: false });
   },
   addAnimation: (asset: AnimationAsset, start?: number) => {
@@ -228,7 +275,7 @@ export const studio = {
     }
     return false;
   },
-  selectObject: (objectId: string) => { emit({ objectId }); studio.select('model', 'position'); },
+  selectObject: (objectId: string) => { emit({ objectId, selectedVelocityKey: null }); studio.select('model', 'position'); },
   addCamera: (pose: ShotCamera = makeCamera()) => {
     if (!state.project.camera) commit(validateProject({ ...state.project, camera: pose }), 'Camera added. Move it in the scene or enter Camera view.');
     studio.selectObject(CAMERA_ID);
@@ -237,14 +284,15 @@ export const studio = {
     if (state.exporting || state.playing || state.preview || !state.project.camera) return;
     const clip = clipAt(state.project, state.time, CAMERA_ID);
     if (clip && state.time > clip.start + clip.duration) { emit({ status: 'Open the camera block to edit its motion.' }); return; }
-    let project = clip ? clipProject(state.project, clip) : state.project;
+    let project = clip ? clipProject(state.project, clip) : { ...state.project, velocities: undefined };
     const baselineClip = transaction?.clips?.find(value => value.id === clip?.id);
     const baseline = transaction ? baselineClip ? clipProject(transaction, baselineClip) : transaction : undefined;
+    const { time, selected } = poseTime(clip, CAMERA_ID, 'model');
     for (const channel of ['position', 'rotation'] as const) {
-      project = editTransformKey(project, { objectId: CAMERA_ID, target: 'model', channel, time: clip ? clipSourceTime(clip, state.time) : state.time,
+      project = editTransformKey(project, { objectId: CAMERA_ID, target: 'model', channel, time,
         value: pose[channel], gestureStart: baseline });
     }
-    commit(clip ? replaceClipTracks(state.project, clip.id, project.tracks) : project, 'Camera pose saved at the playhead.');
+    commit(clip ? replaceClipTracks(state.project, clip.id, project.tracks) : { ...project, velocities: state.project.velocities }, 'Camera pose saved at the playhead.', selected ? { selectedKey: selected.id } : undefined);
   },
   recordCameraTake: (asset: AnimationAsset, start: number, expectedProject: Project) => {
     if (state.project !== expectedProject) throw new Error('The scene changed during recording. The take was not applied.');
@@ -255,7 +303,7 @@ export const studio = {
     emit({ objectId: CAMERA_ID, selectedClip: id, editingClip: null, time: start, selectionActive: false });
   },
   removeObject: (objectId = state.objectId) => {
-    const project = { ...state.project, objects: state.project.objects.filter(o => o.id !== objectId), tracks: state.project.tracks.filter(t => t.objectId !== objectId), clips: state.project.clips?.filter(clip => clip.objectId !== objectId) };
+    const project = { ...state.project, objects: state.project.objects.filter(o => o.id !== objectId), tracks: state.project.tracks.filter(t => t.objectId !== objectId), clips: state.project.clips?.filter(clip => clip.objectId !== objectId), velocities: state.project.velocities?.filter(track => track.objectId !== objectId) };
     if (objectId === CAMERA_ID) delete project.camera;
     commit(project, 'Object deleted. Undo is available.');
     emit({ objectId: primaryTarget(state.project), selected: 'model', selectionActive: false });
@@ -290,18 +338,18 @@ export const studio = {
   },
   rename: (name: string) => commit({ ...state.project, name: name.slice(0, 120) || 'Untitled take' }),
   duration: (duration: number) => {
-    const highest = Math.max(0, ...state.project.tracks.flatMap(t => t.keys.map(k => k.time)), ...state.project.clips?.map(clip => clip.start + clip.duration) ?? []);
+    const highest = Math.max(0, ...state.project.tracks.flatMap(t => t.keys.map(k => k.time)), ...state.project.clips?.map(clip => clip.start + clip.duration) ?? [], ...state.project.velocities?.flatMap(track => [track.duration ?? 0, ...track.keys.map(key => key.time)]) ?? []);
     if (duration < highest) { emit({ status: `Move or delete keys after ${duration}s before shortening the timeline.` }); return; }
-    commit({ ...state.project, duration }); emit({ time: Math.min(state.time, duration) });
+    commit({ ...state.project, duration, velocities: state.project.velocities?.map(track => ({ ...track, duration: track.duration ?? state.project.duration })) }); emit({ time: Math.min(state.time, duration) });
   },
   import: (raw: string) => { const project = parseProject(raw); commit(project, 'Scene loaded.'); emit({ time: 0, objectId: primaryTarget(project), selectionActive: false, selected: 'model', channel: 'position', mode: 'translate' }); },
   undo: () => {
     const snapshot = past.pop(); if (!snapshot) return; const project = restoreHistory(snapshot);
-    future.push(state.project); emit({ project, preview: null, playing: false, time: Math.min(state.time, project.duration), selectedKey: null, undoCount: past.length, redoCount: future.length, status: 'Change undone.' }); persist();
+    future.push(state.project); emit({ project, preview: null, playing: false, time: Math.min(state.time, project.duration), selectedKey: null, selectedVelocityKey: null, undoCount: past.length, redoCount: future.length, status: 'Change undone.' }); persist();
   },
   redo: () => {
     const snapshot = future.pop(); if (!snapshot) return; const project = restoreHistory(snapshot);
-    past.push(state.project); emit({ project, preview: null, playing: false, time: Math.min(state.time, project.duration), selectedKey: null, undoCount: past.length, redoCount: future.length, status: 'Change restored.' }); persist();
+    past.push(state.project); emit({ project, preview: null, playing: false, time: Math.min(state.time, project.duration), selectedKey: null, selectedVelocityKey: null, undoCount: past.length, redoCount: future.length, status: 'Change restored.' }); persist();
   },
 };
 export function useStudio() { return useSyncExternalStore(studio.subscribe, studio.get); }

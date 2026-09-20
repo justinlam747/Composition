@@ -54,15 +54,20 @@ test('saved AI demo supports playback, block stretch, move and split with undo a
   expect(errors).toEqual([]);
 });
 
-test('double-click opens independent keys, easing edits persist, and cached animations can be exported', async ({ page }) => {
+test('double-click opens independent keys, velocity edits persist, and cached animations can be exported', async ({ page }) => {
   await loadDemo(page);
   await page.getByRole('button', { name: 'Drop to floor animation block', exact: true }).dblclick();
   await expect(page.getByRole('region', { name: 'Drop to floor keyframes', exact: true })).toBeVisible();
   const key = page.getByRole('button', { name: 'Position key at 0.70 seconds', exact: true });
   const keyId = (await state(page)).project.clips[0].tracks[0].keys.find((value: { time: number }) => Math.abs(value.time - .7) < .0001).id;
-  await key.press('Enter'); await page.getByLabel('Keyframe interpolation', { exact: true }).selectOption('smooth');
-  expect((await state(page)).project.clips[0].tracks[0].keys.find((value: { id: string }) => value.id === keyId).ease).toBe('smooth');
+  await key.press('Enter');
   await key.press('ArrowRight'); expect((await state(page)).project.clips[0].tracks[0].keys.find((value: { id: string }) => value.id === keyId).time).toBeCloseTo(22 / 30);
+  await page.getByRole('button', { name: 'Velocity timeline mode' }).click();
+  await page.getByRole('button', { name: 'Add velocity key', exact: true }).click();
+  await page.getByLabel('Velocity key speed', { exact: true }).fill('1.75');
+  await page.getByLabel('Velocity key speed', { exact: true }).press('Enter');
+  const velocityKeys = (await state(page)).project.clips[0].velocityKeys;
+  expect(velocityKeys[0].speed).toBe(1.75);
   await page.getByRole('button', { name: 'All blocks', exact: true }).click();
   await page.getByRole('button', { name: 'Cache selected animation', exact: true }).click();
   await page.getByRole('button', { name: 'Animations', exact: true }).click();
@@ -72,7 +77,7 @@ test('double-click opens independent keys, easing edits persist, and cached anim
   await download.saveAs('test-results-blocks/cached-animations.json');
   await page.reload(); await page.getByRole('button', { name: 'Animate', exact: true }).click(); await page.getByRole('button', { name: 'Animations', exact: true }).click();
   await expect(page.locator('.animation-asset')).toHaveCount(4);
-  expect((await state(page)).project.clips[0].tracks[0].keys.find((value: { id: string }) => value.id === keyId).ease).toBe('smooth');
+  expect((await state(page)).project.clips[0].velocityKeys).toEqual(velocityKeys);
 });
 
 test('saved library blocks can be dragged into a track and remain independent from their source', async ({ page }) => {
