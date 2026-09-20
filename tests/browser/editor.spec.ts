@@ -127,16 +127,18 @@ test('idle keys can be edited, retimed, undone, cleared, and restored', async ({
   await expect(page.getByRole('switch', { name: 'Demo mode' })).toBeChecked();
   await page.getByRole('switch', { name: 'Demo mode' }).click();
   await expect(page.getByRole('switch', { name: 'Demo mode' })).not.toBeChecked();
-  await expect(page.getByRole('button', { name: /Chest key at/ })).toHaveCount(5);
+  await expect(page.getByRole('button', { name: /Chest key at/ })).toHaveCount(0);
   await page.getByRole('switch', { name: 'Demo mode' }).click();
   await page.getByRole('button', { name: 'Scene menu', exact: true }).click();
-  await expect(page.locator('.status-message')).toContainText('Demo idle loaded');
+  await expect(page.locator('.status-message')).toContainText('Director will use cached classroom responses');
+  await page.evaluate(async () => { const storePath = '/src/core/store.ts', projectPath = '/src/core/project.ts'; const studio = (await import(storePath)).studio; studio.openProject((await import(projectPath)).seedIdle(studio.get().project)); });
   await expect(page.getByRole('button', { name: /Chest key at/ })).toHaveCount(5);
-  await page.getByRole('region', { name: 'Scene editor', exact: true }).getByRole('button', { name: 'Chest', exact: true }).click();
+  await page.getByRole('button', { name: 'Chest', exact: true }).click();
   await page.getByLabel('Selected joint', { exact: true }).selectOption('chest');
   const rotationX = page.getByRole('spinbutton', { name: 'rotation X', exact: true });
   await rotationX.fill('25'); await rotationX.press('Enter');
   await expect(rotationX).toHaveValue('25.00');
+  await page.getByRole('button', { name: 'Scene menu', exact: true }).click();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(rotationX).toHaveValue('0.00');
   await page.getByRole('button', { name: 'Animate', exact: true }).click();
@@ -151,11 +153,13 @@ test('idle keys can be edited, retimed, undone, cleared, and restored', async ({
   await page.getByRole('button', { name: 'Clear all motion', exact: true }).click();
   await expect(page.locator('.status-message')).toContainText('static rest pose');
   await expect(page.getByRole('button', { name: /Chest key at/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Scene menu', exact: true }).click();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(page.getByRole('button', { name: /Chest key at/ })).toHaveCount(5);
   await page.waitForTimeout(450);
   await page.reload();
-  await page.getByRole('button', { name: 'Mannequin', exact: true }).click();
+  await page.getByRole('button', { name: 'Objects', exact: true }).click();
+  await page.getByRole('button', { name: /^Mannequin/ }).click();
   await page.getByLabel('Selected joint', { exact: true }).selectOption('chest');
   await page.getByRole('button', { name: 'Animate', exact: true }).click();
   await expect(page.getByRole('button', { name: /Chest key at/ })).toHaveCount(5);
@@ -180,7 +184,8 @@ test('mobile layout fits and the timeline stays usable', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'Model animation timeline' })).toHaveCount(0);
   await page.screenshot({ path: 'test-results/composition-scene-mobile.png', fullPage: true });
   await expect(page.getByRole('button', { name: 'Pose', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Mannequin', exact: true }).click();
+  await page.getByRole('button', { name: 'Objects', exact: true }).click();
+  await page.getByRole('button', { name: /^Mannequin/ }).click();
   await page.getByLabel('Selected joint', { exact: true }).selectOption('head');
   await expect(page.getByRole('spinbutton', { name: 'rotation X', exact: true })).toBeVisible();
   const pose = await page.getByRole('complementary', { name: 'Pose controls' }).boundingBox();
@@ -192,6 +197,8 @@ test('mobile layout fits and the timeline stays usable', async ({ page }) => {
   await page.getByRole('button', { name: 'Scene menu', exact: true }).click();
   await page.getByRole('switch', { name: 'Demo mode' }).click();
   await page.getByRole('button', { name: 'Scene menu', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Model animation timeline' })).toHaveCount(0);
+  await page.evaluate(async () => { const storePath = '/src/core/store.ts', projectPath = '/src/core/project.ts'; const studio = (await import(storePath)).studio; studio.openProject((await import(projectPath)).seedIdle(studio.get().project)); });
   await expect(page.getByRole('region', { name: 'Model animation timeline' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
@@ -199,6 +206,7 @@ test('mobile layout fits and the timeline stays usable', async ({ page }) => {
   await page.getByRole('button', { name: 'Scene menu', exact: true }).click();
   await page.getByRole('button', { name: 'Remove character', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Add sample mannequin', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Scene menu', exact: true }).click();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await page.getByRole('button', { name: 'Animate', exact: true }).click();
   if (await page.getByRole('button', { name: 'Dismiss notification' }).count()) await page.getByRole('button', { name: 'Dismiss notification' }).click();
@@ -219,14 +227,15 @@ test('selected body parts render without shader errors', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/#editor');
   await expect(page.getByRole('region', { name: 'Scene editor', exact: true })).toHaveAttribute('aria-busy', 'false');
-  await page.getByRole('button', { name: 'Mannequin', exact: true }).click();
+  await page.getByRole('button', { name: 'Objects', exact: true }).click();
+  await page.getByRole('button', { name: /^Mannequin/ }).click();
   await page.getByLabel('Selected joint', { exact: true }).selectOption('head');
-  await expect(page.getByRole('button', { name: 'Head', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Selected joint', { exact: true })).toHaveValue('head');
   await page.screenshot({ path: 'test-results/selected-head.png', fullPage: true });
   await page.getByLabel('Selected joint', { exact: true }).selectOption('arm.L');
   await page.screenshot({ path: 'test-results/selected-arm.png', fullPage: true });
   await page.getByLabel('Selected joint', { exact: true }).selectOption('model');
-  await expect(page.getByRole('button', { name: 'Mannequin', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Selected joint', { exact: true })).toHaveValue('model');
   expect(errors).toEqual([]);
 });
 
@@ -247,5 +256,35 @@ test('clicking a body part opens floating controls without resizing the scene', 
   await page.screenshot({ path: 'test-results/floating-pose-controls.png', fullPage: true });
   await page.locator('canvas').click({ position: { x: 80, y: before.height * .7 } });
   await expect(page.getByRole('complementary', { name: 'Pose controls' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Move model', exact: true })).toHaveCount(0);
+  expect(await page.evaluate(async () => { const path = '/src/core/store.ts'; return (await import(path)).studio.get().selectionActive; })).toBe(false);
+});
+
+test('prop-only scenes remain capturable and exportable', async ({ page }) => {
+  await page.goto('/#editor');
+  await expect(page.getByRole('region', { name: 'Scene editor', exact: true })).toHaveAttribute('aria-busy', 'false');
+  const result = await page.evaluate(async () => {
+    const storePath = '/src/core/store.ts', projectPath = '/src/core/project.ts', capturePath = '/src/scene/directorCapture.ts', exportPath = '/src/scene/guideExport.ts';
+    const { studio } = await import(storePath); const { makeObject, makeProject } = await import(projectPath);
+    studio.openProject({ ...makeProject(), duration: 2, objects: [makeObject('box')] });
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const frame = (await import(capturePath)).captureDirectorFrame();
+    const { blob } = await (await import(exportPath)).exportGuide();
+    return { image: frame.image.slice(0, 23), size: blob.size, type: blob.type };
+  });
+  expect(result.image).toBe('data:image/jpeg;base64,');
+  expect(result.size).toBeGreaterThan(1000);
+  expect(result.type).toContain('video/');
+});
+
+test('humanoid animation is added to the selected humanoid', async ({ page }) => {
+  await page.goto('/#editor');
+  const objectId = await page.evaluate(async () => {
+    const storePath = '/src/core/store.ts', projectPath = '/src/core/project.ts', libraryPath = '/src/core/animationLibrary.ts';
+    const { studio } = await import(storePath); const { makeObject, makeProject } = await import(projectPath);
+    const project = makeProject(), audience = { ...makeObject('humanoid'), id: 'selected-audience', name: 'Selected audience' };
+    project.objects.push(audience); studio.openProject(project); studio.selectObject(audience.id);
+    studio.addAnimation((await import(libraryPath)).animationLibrary.get()[0]!);
+    return studio.get().project.clips?.at(-1)?.objectId;
+  });
+  expect(objectId).toBe('selected-audience');
 });

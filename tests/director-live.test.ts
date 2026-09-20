@@ -58,5 +58,8 @@ describe('director voice relay', () => {
     const setup = directorLiveSetup('{}'); expect(setup.setup.generationConfig.responseModalities).toEqual(['AUDIO']);
     expect(setup.setup.tools[0].functionDeclarations.map(tool => tool.name)).toEqual(['director_request', 'director_decision', 'director_status']);
     expect(JSON.stringify(setup)).not.toContain('apiKey');
+    const demoInstruction = JSON.stringify(directorLiveSetup('{}', undefined, true));
+    expect(demoInstruction).toContain('director_request for every scene-edit request');
+    expect(demoInstruction).toContain('director_decision for approvals or cancellations');
   });
 });

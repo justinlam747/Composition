@@ -39,7 +39,7 @@ describe('server contracts and file persistence', () => {
     expect((await request(fresh.app).get('/api/objects')).body[0].object.referenceAssetIds).toEqual([asset.body.id]);
     expect((await request(fresh.app).get('/api/projects')).body).toContainEqual({
       id: project.id, name: project.name, updatedAt: expect.any(String), duration: project.duration, objectCount: 1, hasMotion: false,
-      preview: expect.objectContaining({ objects: expect.any(Array), pose: expect.any(Object) }),
+      preview: expect.objectContaining({ objects: expect.any(Array), poses: expect.any(Object) }),
     });
     expect((await request(fresh.app).get(`/api/projects/${project.id}`)).body).toEqual(project);
   });

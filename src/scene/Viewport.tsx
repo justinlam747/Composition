@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { MousePointer2, Move, Rotate3D, Maximize, Camera, Focus, Box, Minimize2, Maximize2 } from 'lucide-react';
-import { BONES, CAMERA_ID, HUMANOID_ID, clipAt, clipSourceTime, hasCharacter, hasTarget, type Project, MAX_ROTATION_PATH_POINTS, fromQuaternion, rotationPathTo, sample, toQuaternion, unwrapRotation, type Vec3 } from '../core/project';
+import { BONES, CAMERA_ID, HUMANOID_DIMENSIONS, HUMANOID_ID, clipAt, clipSourceTime, hasCharacter, hasTarget, type Project, MAX_ROTATION_PATH_POINTS, fromQuaternion, rotationPathTo, sample, toQuaternion, unwrapRotation, type Vec3 } from '../core/project';
 import { clipPreview } from '../core/clips';
 import { studio, useStudio } from '../core/store';
 import { refineRotationPath } from '../core/rotationPath';
@@ -64,14 +64,34 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     const grid = new THREE.GridHelper(40, 80, '#b5b4ae', '#d1d0c9'); grid.position.y = -.009; scene.add(grid);
     const placement = new THREE.Mesh(new THREE.RingGeometry(.1, .15, 40), new THREE.MeshBasicMaterial({ color: '#9c652f', side: THREE.DoubleSide, depthTest: false }));
     placement.rotation.x = -Math.PI / 2; placement.renderOrder = 100; placement.visible = false; scene.add(placement);
-    let model: Mannequin | null = null;
+    const models = new Map<string, Mannequin>();
+    const modelLoads = new Map<string, Promise<Mannequin>>();
+    const failedModels = new Set<string>();
+    const wantedModels = new Set(studio.get().project.objects.filter(object => object.kind === 'humanoid').map(object => object.id));
     const webLine = createWebLine(content);
     const props = new Map<string, ReturnType<typeof createProp>>();
+    function ensureModel(id: string) {
+      const ready = models.get(id); if (ready) return Promise.resolve(ready);
+      const pending = modelLoads.get(id); if (pending) return pending;
+      const load = createMannequin().then(model => {
+        if (disposed || !wantedModels.has(id)) { model.dispose(); return model; }
+        model.root.userData.objectId = id;
+        model.meshes.forEach(mesh => { mesh.userData.objectId = id; });
+        model.markers.forEach(marker => { marker.userData.objectId = id; });
+        models.set(id, model); content.add(model.root); scene.add(model.helper); lastProject = null;
+        return model;
+      }).catch(error => { failedModels.add(id); throw error; }).finally(() => modelLoads.delete(id));
+      modelLoads.set(id, load); return load;
+    }
     function syncObjects(project: Project, time: number) {
-      for (const [id, prop] of props) if (!project.objects.some(o => o.id === id)) { content.remove(prop.root); prop.dispose(); props.delete(id); }
+      const currentObjects = new Map(project.objects.map(object => [object.id, object]));
+      wantedModels.clear(); project.objects.filter(object => object.kind === 'humanoid').forEach(object => wantedModels.add(object.id));
+      for (const [id, prop] of props) if (currentObjects.get(id)?.kind !== 'box') { content.remove(prop.root); prop.dispose(); props.delete(id); }
+      for (const [id, model] of models) if (currentObjects.get(id)?.kind !== 'humanoid') { content.remove(model.root); scene.remove(model.helper); model.dispose(); models.delete(id); }
       for (const object of project.objects) {
         let root: THREE.Object3D | undefined;
-        if (object.kind === 'humanoid') root = model?.root;
+        const model = object.kind === 'humanoid' ? models.get(object.id) : undefined;
+        if (object.kind === 'humanoid') { root = model?.root; if (!model && !modelLoads.has(object.id) && !failedModels.has(object.id)) { void ensureModel(object.id).catch(() => setError('A humanoid could not load. Reload to try again.')); } }
         else {
           let prop = props.get(object.id);
           if (!prop || prop.signature !== JSON.stringify(object.geometry)) {
@@ -86,16 +106,16 @@ export default function Viewport({ active = true }: { active?: boolean }) {
         root.position.fromArray(sample(project, 'model', 'position', time, object.id));
         root.quaternion.copy(toQuaternion(sample(project, 'model', 'rotation', time, object.id)));
         root.scale.fromArray(sample(project, 'model', 'scale', time, object.id));
-        if (object.kind === 'humanoid') root.scale.multiply(new THREE.Vector3(object.dimensions[0] / .7, object.dimensions[1] / 1.9, object.dimensions[2] / .4));
+        if (object.kind === 'humanoid' && model) {
+          root.scale.multiply(new THREE.Vector3(...object.dimensions.map((value, index) => value / HUMANOID_DIMENSIONS[index]) as Vec3));
+          model.setHeroAppearance(object.appearance === 'spider');
+          for (const id of model.bones.keys()) model.setJointPose(id, sample(project, id, 'rotation', time, object.id));
+        }
       }
-      if (model) {
-        model.root.visible = hasCharacter(project);
-        model.setHeroAppearance(project.objects.find(object => object.id === HUMANOID_ID)?.appearance === 'spider');
-        for (const id of model.bones.keys()) model.setJointPose(id, sample(project, id, 'rotation', time));
-      }
-      webLine.update(project, time, model);
+      webLine.update(project, time, models.get(HUMANOID_ID) ?? null);
     }
-    function selectedRoot() { return studio.get().objectId === CAMERA_ID ? shot.camera : studio.get().objectId === HUMANOID_ID ? model?.root : props.get(studio.get().objectId)?.root; }
+    function selectedModel() { return models.get(studio.get().objectId); }
+    function selectedRoot() { return studio.get().objectId === CAMERA_ID ? shot.camera : selectedModel()?.root ?? props.get(studio.get().objectId)?.root; }
 
     const transform = new TransformControls(camera, renderer.domElement); transform.setSize(.8); scene.add(transform.getHelper());
     const partBounds = new THREE.Box3(), partSize = new THREE.Vector3(), pivotPosition = new THREE.Vector3();
@@ -115,9 +135,8 @@ export default function Viewport({ active = true }: { active?: boolean }) {
         studio.patch({ camera: view, selectionActive: false });
       }
     });
-    const modelReady = createMannequin().then(loaded => {
-      if (disposed) { loaded.dispose(); return; }
-      model = loaded; content.add(model.root); scene.add(model.helper);
+    const modelReady = ensureModel(HUMANOID_ID).then(() => {
+      if (disposed) return;
       lastTime = -1; lastProject = null; frameRequest = -1;
       setLoading(false);
     }).catch(() => {
@@ -138,7 +157,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     });
     transform.addEventListener('objectChange', () => {
       if (!dragging || !transform.object) return;
-      const s = studio.get(), object = transform.object;
+      const s = studio.get(), object = transform.object, model = selectedModel();
       let value = s.channel === 'rotation' ? (s.selected === 'model' ? fromQuaternion(object.quaternion) : model!.readJointPose(s.selected)) : (s.channel === 'position' ? object.position.toArray() : object.scale.toArray()) as Vec3;
       if (s.channel === 'rotation' && rotationPath) {
         const previous = rotationPath[rotationPath.length - 1];
@@ -158,7 +177,8 @@ export default function Viewport({ active = true }: { active?: boolean }) {
           rotationPath.push(value);
         }
       }
-      if (s.channel === 'scale' && s.objectId === HUMANOID_ID) { const dimensions = s.project.objects.find(o => o.id === HUMANOID_ID)!.dimensions; value = value.map((v, i) => v / (dimensions[i] / [.7, 1.9, .4][i])) as Vec3; }
+      const selectedObject = s.project.objects.find(candidate => candidate.id === s.objectId);
+      if (s.channel === 'scale' && selectedObject?.kind === 'humanoid') value = value.map((v, i) => v / (selectedObject.dimensions[i] / HUMANOID_DIMENSIONS[i])) as Vec3;
       if (s.channel === 'scale') value.forEach((v, i) => value[i] = Math.max(.05, Math.min(10, v)));
       const route = refinementBase ? refineRotationPath(refinementBase, value) : rotationPath;
       studio.setValue(value, s.channel === 'rotation' ? route ?? undefined : undefined);
@@ -220,12 +240,13 @@ export default function Viewport({ active = true }: { active?: boolean }) {
         if (point && Math.abs(point.x) <= 20 && Math.abs(point.z) <= 20) studio.patch({ directorPlacement: [point.x, 0, point.z], directorPicking: false, status: 'Placement point set. Tell the director what belongs here.' });
         return;
       }
-      const humanoidMeshes = model && hasCharacter(studio.get().project) ? (studio.get().showRig && studio.get().selectionActive ? [...model.markers.values(), ...model.meshes] : model.meshes) : [];
+      const humanoidMeshes = [...models.values()].filter(model => model.root.visible).flatMap(model => studio.get().showRig && studio.get().selectionActive ? [...model.markers.values(), ...model.meshes] : model.meshes);
       const hits = ray.intersectObjects([...humanoidMeshes, ...[...props.values()].filter(p => p.root.visible).flatMap(p => p.meshes), ...(shot.body.visible ? [shot.body] : [])], false);
       if (hits[0]) {
         const propId = hits[0].object.userData.objectId;
-        if (propId) studio.selectObject(propId);
-        else { const id = model?.pickJoint(hits[0]); if (id) { studio.patch({ objectId: HUMANOID_ID }); studio.select(id); } }
+        const model = typeof propId === 'string' ? models.get(propId) : undefined;
+        if (model) { const id = model.pickJoint(hits[0]); if (id) { studio.patch({ objectId: propId }); studio.select(id); } else studio.patch({ selectionActive: false }); }
+        else if (propId) studio.selectObject(propId);
       } else studio.patch({ selectionActive: false });
     }
     function keyDown(e: KeyboardEvent) {
@@ -302,20 +323,21 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       const phonePose = s.phoneControl ? phoneCamera.pose() : undefined;
       if (phonePose) { shot.camera.position.fromArray(phonePose.position); shot.camera.quaternion.fromArray(phonePose.quaternion); }
       shot.show(!!project.camera && !inShot);
-      if (model) {
-        model.highlightJoint(!s.preview && s.selectionActive && s.objectId === HUMANOID_ID && hasCharacter(project) && !s.playing && s.selected !== 'model' ? s.selected : null);
-        model.helper.visible = !s.preview && s.selectionActive && s.showRig && hasCharacter(project);
-        model.markers.forEach((marker, id) => { marker.visible = !s.preview && s.selectionActive && s.showRig; marker.scale.setScalar(id === s.selected ? 1.8 : 1); });
-      }
+      models.forEach((model, id) => {
+        const selected = s.selectionActive && s.objectId === id;
+        model.highlightJoint(!s.preview && selected && !s.playing && s.selected !== 'model' ? s.selected : null);
+        model.helper.visible = model.root.visible && !s.preview && selected && s.showRig;
+        model.markers.forEach((marker, joint) => { marker.visible = model.root.visible && !s.preview && selected && s.showRig; marker.scale.setScalar(joint === s.selected ? 1.8 : 1); });
+      });
       props.forEach((prop, id) => prop.meshes.forEach(mesh => mesh.material.emissive.set(!s.preview && s.selectionActive && s.objectId === id && !s.playing ? '#372315' : '#000000')));
       const selection = !inShot && !s.preview && s.selectionActive && hasTarget(project, s.objectId) && !s.playing ? `${s.objectId}:${s.selected}` : '';
       if (selection !== lastSelection) {
-        const object = s.selected === 'model' ? selectedRoot() : model?.bones.get(s.selected);
+        const object = s.selected === 'model' ? selectedRoot() : selectedModel()?.bones.get(s.selected);
         if (selection && object) transform.attach(object); else transform.detach(); lastSelection = selection;
       }
       if (selection && transform.object) {
         if (selection !== sizedSelection || poseChanged || dragging) {
-          if (s.objectId === HUMANOID_ID && model) model.getPartBounds(s.selected, partBounds).getSize(partSize);
+          if (selectedModel()) selectedModel()!.getPartBounds(s.selected, partBounds).getSize(partSize);
           else if (s.objectId === CAMERA_ID) partSize.set(.5, .5, .5);
           else partBounds.setFromObject(selectedRoot()!).getSize(partSize);
           partDiameter = Math.max(partSize.x, partSize.y, partSize.z, .05);
@@ -351,14 +373,15 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     let directorRenderer: THREE.WebGLRenderer | undefined;
     const unregisterDirector = registerDirectorCapture(() => {
       const current = studio.get();
-      if (disposed || !model || dragging || current.exporting || current.phoneControl || !activeView.current) throw new Error('Finish loading, dragging or capture before asking the director.');
+      const visibleHumanoidsReady = current.project.objects.filter(object => object.kind === 'humanoid' && !object.hidden).every(object => models.has(object.id));
+      if (disposed || !visibleHumanoidsReady || dragging || current.exporting || current.phoneControl || !activeView.current) throw new Error('Finish loading, dragging or capture before asking the director.');
       directorRenderer ??= new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
       directorRenderer.setPixelRatio(1); directorRenderer.setSize(768, 432); directorRenderer.toneMapping = renderer.toneMapping; directorRenderer.toneMappingExposure = renderer.toneMappingExposure;
       const view = (current.camera === 'shot' ? shot.camera : camera).clone(); view.aspect = 16 / 9; view.updateProjectionMatrix();
-      const hidden = [grid, placement, transform.getHelper(), shot.body, shot.helper, model.helper, ...model.markers.values()];
+      const hidden = [grid, placement, transform.getHelper(), shot.body, shot.helper, ...[...models.values()].flatMap(model => [model.helper, ...model.markers.values()])];
       const visible = hidden.map(object => object.visible);
       try {
-        syncObjects(current.project, current.time); hidden.forEach(object => { object.visible = false; }); model.highlightJoint(null);
+        syncObjects(current.project, current.time); hidden.forEach(object => { object.visible = false; }); models.forEach(model => model.highlightJoint(null));
         props.forEach(prop => prop.meshes.forEach(mesh => mesh.material.emissive.set(0)));
         directorRenderer.render(scene, view);
         return { image: directorRenderer.domElement.toDataURL('image/jpeg', .75), view: { position: view.position.toArray() as Vec3, rotation: fromQuaternion(view.quaternion), fov: view.fov } };
@@ -368,8 +391,9 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       await modelReady;
       if (disposed) throw new Error('The scene was closed. Return to the editor and try again.');
       if (studio.get().phoneControl) throw new Error('Stop phone control before exporting a guide.');
-      if (!model || dragging || studio.get().preview || studio.get().exporting) throw new Error('Finish loading or close the suggestion preview before exporting.');
+      if (dragging || studio.get().preview || studio.get().exporting) throw new Error('Finish loading or close the suggestion preview before exporting.');
       const snapshot = structuredClone(studio.get().project), previousTime = studio.get().time;
+      await Promise.all(snapshot.objects.filter(object => object.kind === 'humanoid' && !object.hidden).map(object => ensureModel(object.id)));
       const captureCamera = snapshot.camera ? shot.camera.clone() : camera.clone();
       const capture = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
       capture.setPixelRatio(1); capture.setSize(1280, 720); capture.shadowMap.enabled = true; capture.shadowMap.type = renderer.shadowMap.type;
@@ -379,7 +403,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       studio.patch({ exporting: true, playing: false }); orbit.enabled = false; transform.detach(); lastSelection = '';
       try {
         shot.show(false);
-        grid.visible = false; placement.visible = false; model.helper.visible = false; model.highlightJoint(null); model.markers.forEach(marker => marker.visible = false);
+        grid.visible = false; placement.visible = false; models.forEach(model => { model.helper.visible = false; model.highlightJoint(null); model.markers.forEach(marker => marker.visible = false); });
         props.forEach(prop => prop.meshes.forEach(mesh => mesh.material.emissive.set(0)));
         const blob = await recordCanvas(capture.domElement, snapshot.duration, time => {
           syncObjects(snapshot, time);
@@ -400,7 +424,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('pointercancel', blur);
       renderer.domElement.removeEventListener('wheel', wheel);
       window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', blur); document.removeEventListener('visibilitychange', visibility);
-      if (dragging) studio.end(); transform.dispose(); orbit.dispose(); model?.dispose(); props.forEach(p => p.dispose()); grid.geometry.dispose();
+      if (dragging) studio.end(); transform.dispose(); orbit.dispose(); models.forEach(model => model.dispose()); props.forEach(p => p.dispose()); grid.geometry.dispose();
       (Array.isArray(grid.material) ? grid.material : [grid.material]).forEach(m => m.dispose()); groundGeometry.dispose(); groundMaterial.dispose(); keyLight.shadow.map?.dispose(); renderer.domElement.remove();
     };
   }, []);

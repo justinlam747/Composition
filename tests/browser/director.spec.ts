@@ -1,8 +1,9 @@
 import { expect, test, type Page, type WebSocketRoute } from '@playwright/test';
+import type { Project } from '../../src/core/project';
 test.use({ permissions: ['microphone'], launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] } });
 
 async function scene(page: Page) {
-  return page.evaluate(async () => { const path = '/src/core/store.ts'; return (await import(path)).studio.get().project; });
+  return page.evaluate<Project>(async () => { const path = '/src/core/store.ts'; return (await import(path)).studio.get().project; });
 }
 async function openDirector(page: Page) {
   await page.goto('/#editor');
@@ -33,16 +34,45 @@ test('director clarifies, previews, applies and saves a desk with undo/redo', as
   await proposal.getByRole('button', { name: 'End preview' }).click();
   await ask(page, 'Yes please');
   await expect(page.getByText('Changes applied', { exact: true })).toBeVisible();
-  const applied = await scene(page); expect(applied.objects).toHaveLength(2); expect(applied.objects[1].geometry.parts).toHaveLength(5);
+  const applied = await scene(page); expect(applied.objects).toHaveLength(2); expect(applied.objects[1]!.geometry!.parts).toHaveLength(5);
   await page.screenshot({ path: 'test-results-director/director-desktop.png' });
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); expect((await scene(page)).objects).toHaveLength(1);
   await page.getByRole('button', { name: 'Director', exact: true }).focus(); await page.keyboard.press('Control+Shift+Z'); expect((await scene(page)).objects).toHaveLength(2);
   await page.getByRole('button', { name: 'Save current project' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Saving project' })).toHaveCount(0);
   await page.reload(); await expect.poll(async () => (await scene(page)).objects.length).toBe(2);
-  expect((await scene(page)).objects[1].geometry.parts).toHaveLength(5);
+  expect((await scene(page)).objects[1]!.geometry!.parts).toHaveLength(5);
   const guide = await page.evaluate(async () => { const path = '/src/scene/guideExport.ts'; const { blob } = await (await import(path)).exportGuide(); return { size: blob.size, type: blob.type }; });
   expect(guide.size).toBeGreaterThan(1000); expect(guide.type).toContain('video/');
+});
+
+test('demo Director deterministically builds, moves and clears a classroom audience', async ({ page }) => {
+  await openDirector(page);
+  await page.evaluate(async () => {
+    const storePath = '/src/core/store.ts', projectPath = '/src/core/project.ts';
+    const studio = (await import(storePath)).studio; studio.openProject((await import(projectPath)).makeProject()); studio.demo();
+  });
+  await expect(page.getByText('Demo cache', { exact: true })).toBeVisible();
+  await ask(page, 'Create a classroom with a long desk, projector screen, four chairs and humanoids');
+  const proposal = page.getByRole('region', { name: 'Director proposal' });
+  await expect(proposal).toContainText('four evenly spaced chairs');
+  await proposal.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(page.getByText('Suggestion preview · not applied')).toBeVisible();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: 'test-results-director/demo-classroom-preview.png' });
+  await proposal.getByRole('button', { name: 'End preview' }).click();
+  await proposal.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect.poll(async () => (await scene(page)).objects.length).toBe(11);
+  expect((await scene(page)).camera).toBeUndefined();
+
+  await ask(page, 'Move the desk 2m farther from the chairs');
+  await page.getByRole('region', { name: 'Director proposal' }).getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect.poll(async () => (await scene(page)).objects.find(object => object.id === 'demo-classroom-table')?.position).toEqual([0, 0, -2]);
+
+  await ask(page, 'Remove the humanoids');
+  await page.getByRole('region', { name: 'Director proposal' }).getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect.poll(async () => (await scene(page)).objects.filter(object => object.kind === 'humanoid').map(object => object.id)).toEqual(['humanoid']);
+  expect((await scene(page)).objects).toHaveLength(7);
 });
 
 test('cancel leaves the scene unchanged and a scene edit requires renewed approval', async ({ page }) => {
@@ -143,6 +173,41 @@ test('delayed recovery cannot replace or apply over a newer approved request', a
 });
 
 test.describe('director voice', () => {
+  test('cached demo voice speaks the exact response and suppresses Gemini paraphrases', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { demoSpeech: string[] }).demoSpeech = [];
+      Object.defineProperty(window.speechSynthesis, 'speak', { configurable: true, value: (utterance: SpeechSynthesisUtterance) => {
+        (window as unknown as { demoSpeech: string[] }).demoSpeech.push(utterance.text); utterance.onstart?.(new Event('start') as SpeechSynthesisEvent); utterance.onend?.(new Event('end') as SpeechSynthesisEvent);
+      } });
+      Object.defineProperty(window.speechSynthesis, 'cancel', { configurable: true, value: () => {} });
+    });
+    await page.route('**/api/capabilities', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), directorVoice: true } }); });
+    let socket!: WebSocketRoute; const replies: { type: string; id?: string; result?: string }[] = [];
+    await page.routeWebSocket('**/api/director/live', ws => { socket = ws; ws.onMessage(raw => {
+      if (typeof raw !== 'string') return; const data = JSON.parse(raw); replies.push(data);
+      if (data.type === 'start') ws.send(JSON.stringify({ type: 'ready' }));
+    }); });
+    await openDirector(page);
+    await page.evaluate(async () => { const path = '/src/core/store.ts'; (await import(path)).studio.demo(); });
+    await page.getByRole('button', { name: 'Start director voice' }).click();
+    await expect(page.getByRole('button', { name: 'Stop director voice' })).toContainText('listening');
+    socket.send(JSON.stringify({ type: 'input-start', turn: 1 }));
+    socket.send(JSON.stringify({ type: 'transcript', role: 'user', text: 'Create a classroom with a long table, projector screen, four chairs and humanoids', turn: 1 }));
+    socket.send(JSON.stringify({ type: 'tool', id: 'demo-plan', name: 'director_request', args: { request: 'Create a classroom with a long table, projector screen, four chairs and humanoids' }, utterance: 'Create a classroom with a long table, projector screen, four chairs and humanoids', turn: 1 }));
+    await expect.poll(() => replies.find(reply => reply.id === 'demo-plan')).toBeTruthy();
+    const pending = JSON.parse(replies.find(reply => reply.id === 'demo-plan')!.result!).proposal;
+    await expect.poll(() => page.evaluate(() => (window as unknown as { demoSpeech: string[] }).demoSpeech)).toEqual(['I’ll stage a classroom with a long table, a projector screen, four evenly spaced chairs with seated humanoids, and one presenter standing in front. Review the preview, then apply it.']);
+    socket.send(JSON.stringify({ type: 'input-start', turn: 2 }));
+    socket.send(JSON.stringify({ type: 'tool', id: 'demo-approval', name: 'director_decision', args: { decision: 'approve', proposalId: pending.id, revision: pending.revision }, utterance: 'Yes', turn: 2 }));
+    await expect.poll(() => replies.find(reply => reply.id === 'demo-approval')).toBeTruthy();
+    await expect.poll(async () => (await scene(page)).objects.length).toBe(11);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { demoSpeech: string[] }).demoSpeech.at(-1))).toBe('Applied. You can adjust the result in the scene or use Undo.');
+    socket.send(JSON.stringify({ type: 'transcript', role: 'assistant', text: 'Here is my improvised version.', turn: 1 }));
+    await page.waitForTimeout(50);
+    await expect(page.getByRole('log')).not.toContainText('improvised version');
+    await page.getByRole('button', { name: 'Stop director voice' }).click();
+  });
+
   test('spoken approval uses the current proposal and stopping releases the microphone', async ({ page }) => {
     await page.addInitScript(() => {
       const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);

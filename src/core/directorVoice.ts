@@ -12,9 +12,13 @@ export class DirectorVoice {
   private nextAudio = 0;
   private stopped = false;
   private ready = false;
+  private demo = false;
+  private remoteMuted = false;
+  private utterance?: SpeechSynthesisUtterance;
   constructor(private onEvent: (event: VoiceEvent) => void, private status: (status: VoiceStatus) => void, private error: (message: string) => void) {}
-  async start(initial: { sessionId: string; messages: DirectorMessage[]; context: string; image?: string }) {
+  async start(initial: { sessionId: string; messages: DirectorMessage[]; context: string; image?: string; demo?: boolean }) {
     this.status('connecting');
+    this.demo = !!initial.demo; this.remoteMuted = this.demo;
     try {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || !window.AudioWorkletNode) throw new Error('Voice needs Chrome or Edge on localhost or HTTPS. You can still type.');
       this.audio = new AudioContext(); await this.audio.resume();
@@ -33,7 +37,7 @@ export class DirectorVoice {
         if (socket.bufferedAmount > 128000) { this.fail('Voice connection is too slow. Restart the microphone or continue typing.'); return; }
         if (data.type === 'audio') socket.send(data.bytes);
         else if (data.type === 'activity') {
-          if (data.active) { this.interrupt(); this.onEvent({ type: 'speech-start' }); }
+          if (data.active) { this.remoteMuted = this.demo; this.interrupt(); this.onEvent({ type: 'speech-start' }); }
           socket.send(JSON.stringify(data));
         }
       };
@@ -43,9 +47,11 @@ export class DirectorVoice {
           const message = JSON.parse(event.data) as VoiceEvent;
           if (message.type === 'ready') { this.ready = true; this.status('listening'); }
           else if (message.type === 'reconnecting') { this.ready = false; this.interrupt(); this.status('reconnecting'); }
-          else if (message.type === 'audio' && typeof message.data === 'string') this.play(message.data);
+          else if (message.type === 'audio' && typeof message.data === 'string' && !this.remoteMuted) this.play(message.data);
           else if (message.type === 'interrupted') this.interrupt();
           else if (message.type === 'error') this.fail(String(message.message));
+          const suppressRemoteOutput = this.remoteMuted && (message.type === 'audio' || message.type === 'transcript' && message.role === 'assistant');
+          if (suppressRemoteOutput) return;
           this.onEvent(message);
         } catch { this.fail('Voice returned an unreadable response. Continue typing or reconnect.'); }
       };
@@ -56,6 +62,16 @@ export class DirectorVoice {
     }
   }
   send(message: unknown) { if (this.ready && this.socket?.readyState === WebSocket.OPEN) { this.socket.send(JSON.stringify(message)); return true; } return false; }
+  allowRemoteReply() { this.remoteMuted = false; }
+  cachedReply(text: string) {
+    this.remoteMuted = true; this.interrupt();
+    if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) { this.error('Exact demo speech is unavailable in this browser. The cached response is still shown in the chat.'); return; }
+    const utterance = new SpeechSynthesisUtterance(text); this.utterance = utterance;
+    utterance.rate = 1; utterance.pitch = 1;
+    utterance.onstart = () => { if (this.utterance === utterance) this.status('speaking'); };
+    utterance.onend = utterance.onerror = () => { if (this.utterance === utterance) { this.utterance = undefined; if (!this.stopped && this.ready) this.status('listening'); } };
+    window.speechSynthesis.speak(utterance);
+  }
   private play(encoded: string) {
     if (!this.audio) return;
     const raw = atob(encoded), bytes = Uint8Array.from(raw, char => char.charCodeAt(0));
@@ -68,7 +84,7 @@ export class DirectorVoice {
     source.onended = () => { this.playback.delete(source); source.disconnect(); if (!this.playback.size && !this.stopped && this.ready) this.status('listening'); };
     source.start(this.nextAudio); this.nextAudio += buffer.duration; this.status('speaking');
   }
-  interrupt() { this.playback.forEach(source => { source.onended = null; source.stop(); source.disconnect(); }); this.playback.clear(); this.nextAudio = 0; if (this.ready && !this.stopped) this.status('listening'); }
+  interrupt() { this.playback.forEach(source => { source.onended = null; source.stop(); source.disconnect(); }); this.playback.clear(); this.nextAudio = 0; if (this.utterance) { this.utterance = undefined; window.speechSynthesis?.cancel(); } if (this.ready && !this.stopped) this.status('listening'); }
   private fail(message: string) { if (this.stopped) return; this.error(message); this.stop(); }
   stop() {
     if (this.stopped) return; this.stopped = true; this.ready = false; this.interrupt();

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { type AnimationAsset, type Channel, type Project, type Vec3, type ShotCamera, CAMERA_ID, clipAt, clipSceneTime, clipSourceTime, hasTarget, primaryTarget, makeCamera, HUMANOID_ID, makeObject, validateProject, type SceneObject, type Generation, makeProject, moveKey, parseProject, sample, seedIdle, snapTime, clipTimelineTime, clipTimelineSceneTime, motionTime, motionSceneTime, uid } from './project';
+import { type AnimationAsset, type Channel, type Project, type Vec3, type ShotCamera, CAMERA_ID, clipAt, clipSceneTime, clipSourceTime, hasTarget, primaryTarget, makeCamera, HUMANOID_ID, makeObject, validateProject, type SceneObject, type Generation, makeProject, moveKey, parseProject, sample, snapTime, clipTimelineTime, clipTimelineSceneTime, motionTime, motionSceneTime, uid } from './project';
 import { applyProposal, sceneSignature, type Proposal } from './proposals';
 import { prepareDirectorActions, type DirectorExecution } from './director';
 import { simplifyRotationPath } from './rotationPath';
@@ -29,7 +29,7 @@ const restoredProject = draft ?? makeProject();
 let state: EditorState = {
   project: restoredProject, preview: null, exporting: false, objectId: primaryTarget(restoredProject), time: 0, playing: false, loop: true, selected: 'model', channel: 'position', selectedKey: null,
   mode: 'translate', space: 'world', showRig: false, showGrid: true, selectionActive: false, camera: 'orbit', frameRequest: 0,
-  status: 'Ready. Start with a pose, or load the demo idle.', undoCount: 0, redoCount: 0,
+  status: 'Ready. Start with a pose, or enable Demo mode for cached Director commands.', undoCount: 0, redoCount: 0,
   selectedClip: null, editingClip: null, phoneControl: false,
   directorPlacement: null, directorPreviewPlacement: null, directorPicking: false,
   timelineMode: 'keys', selectedVelocityKey: null,
@@ -303,8 +303,7 @@ export const studio = {
     }) })).filter(t => t.keys.length) }), 'Keyframe deleted.');
   },
   demo: () => {
-    try { commit(seedIdle(state.project), 'Demo idle loaded. These are editable sample keys, not live AI output.'); emit({ time: 0, objectId: HUMANOID_ID, selected: 'chest', channel: 'rotation', mode: 'rotate', showRig: true, selectionActive: false }); }
-    catch (error) { emit({ status: (error as Error).message }); }
+    commit({ ...state.project, demo: true }, 'Demo mode on. Director will use cached classroom responses when they match.');
   },
   disableDemo: () => commit({ ...state.project, demo: false }, 'Demo mode off. Your scene and keyframes are kept.'),
   clear: () => { commit({ ...state.project, tracks: [], clips: [], velocities: undefined, demo: false }, 'All motion cleared. The character is now in its static rest pose.'); emit({ time: 0 }); },
@@ -314,7 +313,8 @@ export const studio = {
       time: Math.max(clip.start, Math.min(clip.start + clip.duration, state.time)), playing: false, selectionActive: false });
   },
   addAnimation: (asset: AnimationAsset, start?: number) => {
-    const objectId = asset.kind === 'humanoid' ? HUMANOID_ID : asset.kind === 'camera' ? CAMERA_ID : state.objectId;
+    const selected = state.project.objects.find(object => object.id === state.objectId);
+    const objectId = asset.kind === 'humanoid' && selected?.kind === 'humanoid' ? selected.id : asset.kind === 'humanoid' ? HUMANOID_ID : asset.kind === 'camera' ? CAMERA_ID : state.objectId;
     const at = start ?? Math.max(state.time, ...state.project.clips?.filter(clip => clip.objectId === objectId).map(clip => clip.start + clip.duration) ?? []);
     const existing = new Set(state.project.clips?.map(clip => clip.id));
     if (tryClipEdit(() => insertClip(state.project, asset, objectId, at), `${asset.name} added to the timeline.`)) {

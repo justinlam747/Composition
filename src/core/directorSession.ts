@@ -115,7 +115,9 @@ export class DirectorSession {
       const result = await api.directorTurn(this.input(text), controller.signal);
       if (controller.signal.aborted || !this.active || studio.get().project.id !== this.projectId) return { message: 'Request stopped.' };
       if (result.proposal) { studio.patch({ preview: null }); this.update({ proposal: result.proposal, execution: null, needsReview: false }); }
-      this.message('assistant', result.message); this.voiceUpdate(); return result;
+      this.message('assistant', result.message);
+      this.voiceReply(result.source, result.message);
+      this.voiceUpdate(); return result;
     } catch (error) {
       if (controller.signal.aborted) return { message: 'Request stopped.' };
       this.update({ error: (error as Error).message }); throw error;
@@ -143,8 +145,8 @@ export class DirectorSession {
       if (!this.active || studio.get().project.id !== this.projectId) { this.autoApply = false; return; }
       this.autoApply = decision === 'approve' && stillAuthorized() && result.status !== 'cancelled'; this.remember(result);
       this.update({ proposal: result.proposal, execution: result, needsReview: false });
-      if (result.status === 'cancelled') { studio.patch({ preview: null }); this.message('assistant', 'Cancelled. Your scene has not changed.'); }
-      else if (decision === 'refresh') { studio.patch({ preview: null }); this.message('assistant', 'I refreshed the proposal for the current scene. Review the preview, then approve this version.'); }
+      if (result.status === 'cancelled') { studio.patch({ preview: null }); const reply = 'Cancelled. Your scene has not changed.'; this.message('assistant', reply); this.voiceReply(proposal.source, reply); }
+      else if (decision === 'refresh') { studio.patch({ preview: null }); const reply = 'I refreshed the proposal for the current scene. Review the preview, then approve this version.'; this.message('assistant', reply); this.voiceReply(proposal.source, reply); }
       else this.message('assistant', result.status === 'running' ? 'Preparing your approved changes. You can keep editing.' : 'Your approved changes are ready.');
       this.voiceUpdate();
     } catch (error) { this.autoApply = false; this.update({ error: (error as Error).message }); }
@@ -178,7 +180,8 @@ export class DirectorSession {
         studio.applyDirector(execution); this.applied.add(execution.id); this.autoApply = false;
         const applied: DirectorExecution = { ...execution, status: 'applied', proposal: { ...execution.proposal, status: 'applied' } };
         this.update({ execution: applied, proposal: applied.proposal }); this.remember(applied);
-        this.message('assistant', execution.proposal.actions.every(action => action.kind === 'set_placement') ? 'Marker placed. Tell me what you want to put here.' : 'Applied. You can adjust the result in the scene or use Undo.'); this.voiceUpdate(true);
+        const reply = execution.proposal.actions.every(action => action.kind === 'set_placement') ? 'Marker placed. Tell me what you want to put here.' : 'Applied. You can adjust the result in the scene or use Undo.';
+        this.message('assistant', reply); this.voiceReply(execution.proposal.source, reply); this.voiceUpdate(true);
         void api.directorDecision(execution.proposal, 'applied', studio.get().project).catch(() => { /* Local ledger prevents replay; a recovered result always needs review. */ });
       } catch (error) { this.autoApply = false; this.update({ error: (error as Error).message, needsReview: true }); }
     } else if (execution.status === 'failed') { this.autoApply = false; this.update({ error: execution.error ?? 'Preparation failed. Retry or revise the request.' }); this.voiceUpdate(); }
@@ -189,7 +192,7 @@ export class DirectorSession {
       const frame = captureDirectorFrame(); this.update({ error: '' }); this.cancelledTools.clear(); this.voiceApprovals.clear(); const epoch = ++this.voiceEpoch;
       const voice = new DirectorVoice(event => { if (epoch === this.voiceEpoch) void this.voiceEvent(event).catch(error => this.update({ error: error.message })); }, status => { if (epoch === this.voiceEpoch) this.update({ voice: status }); }, error => { this.autoApply = false; this.update({ error, needsReview: !!this.state.execution }); });
       this.voice = voice;
-      await voice.start({ sessionId: this.id, context: this.voiceContext(), image: frame.image, messages: this.state.messages.slice(-30).map(({ role, text }) => ({ role, text: text.slice(0, 4000) })) });
+      await voice.start({ sessionId: this.id, context: this.voiceContext(), image: frame.image, demo: studio.get().project.demo, messages: this.state.messages.slice(-30).map(({ role, text }) => ({ role, text: text.slice(0, 4000) })) });
     } catch (error) { this.update({ error: (error as Error).message, voice: 'off' }); }
   }
   stopVoice = () => { this.voice?.stop(); this.voice = undefined; this.voiceEpoch++; this.update({ voice: 'off' }); };
@@ -239,6 +242,10 @@ export class DirectorSession {
       if (value?.proposal) result = { ...value, proposal: { id: value.proposal.id, revision: value.proposal.revision, summary: value.proposal.summary, status: value.proposal.status } };
       voice?.send({ type: 'tool-result', id: event.id, result: JSON.stringify(result) });
     }
+  }
+  private voiceReply(source: DirectorProposal['source'], text: string) {
+    if (!this.voice) return;
+    if (source === 'demo-cache') this.voice.cachedReply(text); else this.voice.allowRemoteReply();
   }
 }
 const sessions = new Map<string, DirectorSession>();

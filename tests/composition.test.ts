@@ -45,6 +45,14 @@ describe('portable multi-object scenes', () => {
     expect(() => seedIdle(project)).toThrow(/scene is full/);
     expect(project).toEqual(before); expect(parseProject(JSON.stringify(project))).toEqual(before);
   });
+  it('restores the primary mannequin without treating another humanoid as the primary', () => {
+    const project = makeProject(), audience = { ...makeObject('humanoid'), id: 'audience-only', hidden: true };
+    project.objects = [audience];
+    const seeded = seedIdle(project);
+    expect(seeded.objects.some(object => object.id === HUMANOID_ID && !object.hidden)).toBe(true);
+    expect(seeded.objects.find(object => object.id === audience.id)?.hidden).toBe(true);
+    expect(seeded.tracks.every(track => track.objectId === HUMANOID_ID)).toBe(true);
+  });
 });
 
 describe('atomic AI proposals', () => {

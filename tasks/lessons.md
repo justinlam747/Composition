@@ -104,3 +104,9 @@ No `CLAUDE.md` was found in the workspace or its ancestors during this review, s
 ## Director placement markers - 2026-09-19
 
 - Agent commands can change transient editor tools without changing the saved scene. Return those effects alongside the prepared project, keep proposed markers separate until approval, and skip scene-history commits and Undo controls for marker-only actions; otherwise Undo can revert an unrelated scene edit. Verify both unchanged project/history and preview cancellation. See `prepareDirectorActions`, `studio.applyDirector`, `DirectorPanel.tsx`, and the director tests.
+
+## Deterministic Director demos and multi-character scenes - 2026-09-20
+
+- Treat a mode toggle as configuration, not scene authoring. Enabling or disabling a deterministic demo path should preserve objects, animation, selection, and camera; route cached actions through the same validation, preview, approval, apply, and undo transaction as live agent proposals. See `studio.demo`, `demoDirectorResponse`, and `Director.turn`.
+- Make cached agent commands deterministic by reserving stable object IDs and validating the complete expected state before each follow-up. Refuse incompatible or ambiguous scenes instead of partially overwriting user work, while letting unmatched requests fall back to the live provider. Carry response provenance through chat and voice so exact cached speech can suppress remote paraphrases without disabling live fallback. See `src/core/demoDirector.ts`, `src/core/directorSession.ts`, and `src/core/directorVoice.ts`.
+- Multiple instances of one skinned asset need skeleton-aware cloning plus independent mutable geometry and materials. Key renderer, selection, pose sampling, helper visibility, capture readiness, and disposal by object ID, and serialize preview poses per humanoid rather than in one global map. See `src/scene/mannequin.ts`, `src/scene/Viewport.tsx`, and `src/core/projectPreview.ts`.

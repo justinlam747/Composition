@@ -1,6 +1,6 @@
 # composition
 
-A browser composition editor with one humanoid, multiple box props, independent animation tracks, optional Gemini suggestions, and Seedance video generation through fal. Manual editing works without API credentials. The white interface uses Manrope.
+A browser composition editor with humanoids, multiple box props, independent animation tracks, optional Gemini suggestions, and Seedance video generation through fal. Manual editing works without API credentials. The white interface uses Manrope.
 
 ## Run on Windows
 
@@ -24,7 +24,7 @@ Copy-Item .env.example .env
 
 ## Compose and animate
 
-1. Start with the static mannequin. Use the **Objects**, **Scene**, and **Animate** icons at the top left. Open **Objects** to add boxes or select an object. Maximum: 32 objects and one humanoid.
+1. Start with the static mannequin. Use the **Objects**, **Scene**, and **Animate** icons at the top left. Open **Objects** to add boxes or select an object. Maximum: 32 objects. The manual add flow retains one primary humanoid; Director demo scenes can contain additional independently posed humanoids.
 2. Click an object or body part to open its floating controls. **Move**, **Rotate**, and **Scale** write keys on that object's track at the current time. Joint controls write local rotation keys. New objects have no motion tracks.
 3. Open **Object details** to change a name or dimensions, add reference images, save an object to the library, or delete it. Saved objects retain references and size at the playhead and respawn static.
 4. Open **Animate**. The timeline overlays the composition without resizing the scene. Drag the timeline's top divider to make it smaller or larger; its down-chevron minimizes it to a playback strip, and the up-chevron restores it. The focused divider also supports Up/Down arrows and Home/End. Its object selector chooses whose position, rotation, scale, and selected joint tracks appear. Drag keys to retime or delete selected keys. Press Space to play.
@@ -66,7 +66,7 @@ Open the sparkle button. The panel sits beside the canvas on desktop and opens a
 
 Suggestions have an editable JSON view and **Preview in scene**. Preview never enters saved scene state. Apply is enabled after validation and creates one undoable change. Unknown IDs, unsupported tracks, invalid dimensions/times, duplicates, and stale proposals are rejected before mutation.
 
-**Demo mode** in the scene menu loads prepared idle keys. The AI panel separately offers **Demo · prepared samples**, using fixed local suggestions regardless of prompt. Applying these marks the scene as Demo. Turning Demo off keeps its objects and keys. Live failures never return demo content. No prepared Seedance output is bundled.
+**Demo mode** in the scene menu changes Director into a cached-first recording mode without changing the current scene or camera. It recognizes the prepared classroom build, “move the desk 2 m farther from the chairs,” and “remove the humanoids” requests, returning the same proposal and wording every time. The classroom uses the existing mannequin as its presenter plus four evenly spaced seated humanoids. Unmatched requests fall back to live Gemini. Typed cached commands work without credentials; voice recognition and unmatched requests still require Gemini. Turning Demo off keeps all scene edits. No prepared Seedance output is bundled.
 
 ## Guide and output video
 
@@ -118,7 +118,7 @@ The microphone button at the top right opens **Director**. Type a direction, or 
 
 For “add a desk here,” either press **Pick placement point** and click the floor, or tell Director where to place the marker: “Place the marker 5 units to the right of the humanoid.” Review and approve the marker, then say “Add a desk here.” Relative marker placement uses the object's animated position at the requested playhead time; right means world +X and one unit is one meter. The marker stays on the floor within 20 units of the origin on X/Z. It is temporary editor context, so placing it does not add a scene object or an undo entry. Gemini receives the scene's objects, selection, playhead and camera context plus a virtual-scene snapshot. Physical camera and phone feeds are not sent. It asks for missing details and summarizes its proposed change. Review **Preview**, **Revise**, **Cancel**, or **Apply**; a clear spoken or typed “yes” also approves the current proposal. Scene changes are atomic and undoable. Props are built from editable composite geometry: a desk has a top and legs, while its overall position, dimensions and animation remain ordinary editor controls.
 
-Director can create/edit/delete props, set a static camera, create or replace camera/prop animation blocks, retime blocks, and request humanoid performances from **Hunyuan Motion 1B**. Hunyuan starts only after approval and returns editable blocks. Keep editing while it runs. If the scene changed, refresh and approve the updated proposal before applying; already generated motion is retained. Existing unblocked keyframes must be saved as an animation block before adding a director animation to that target. Scene limits remain one humanoid and ten seconds.
+Director can create/edit/delete props, set a static camera, create or replace camera/prop animation blocks, retime blocks, and request primary-humanoid performances from **Hunyuan Motion 1B**. Hunyuan starts only after approval and returns editable blocks. Keep editing while it runs. If the scene changed, refresh and approve the updated proposal before applying; already generated motion is retained. Existing unblocked keyframes must be saved as an animation block before adding a director animation to that target. Scenes support up to 32 objects and ten seconds; generated Hunyuan motion continues to target the primary `humanoid` object.
 
 Set server-only `GEMINI_API_KEY` and `FAL_KEY` using `.env.example`. `GEMINI_DIRECTOR_MODEL` overrides the structured planner (otherwise `GEMINI_TEXT_MODEL`, default `gemini-2.5-flash`); `GEMINI_LIVE_MODEL` defaults to `gemini-3.8-live`. Model access and quota depend on your account. Restart the server after configuration changes. Voice requires localhost or HTTPS and a browser with microphone and AudioWorklet support; Chrome and Edge are the primary targets.
 

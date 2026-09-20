@@ -29,7 +29,7 @@ Clients exchange JSON with the local single-user API at `http://127.0.0.1:3001/a
 }
 ```
 
-- Maximum 32 objects, one humanoid with reserved ID `humanoid`. Other IDs are unique, using 1–80 ASCII letters, numbers, underscores, or hyphens.
+- Maximum 32 objects. Object IDs are unique, using 1–80 ASCII letters, numbers, underscores, or hyphens. `humanoid` remains the reserved primary character ID used by generated motion and prepared web effects; additional humanoids may use other IDs and own independent joint tracks.
 - Coordinates: right-handed, Y up, meters, bottom-center pivots. Dimensions `[width,height,depth]` range from 0.05–20; scale components from 0.05–10 multiply dimensions.
 - Rotations: XYZ Euler degrees. Numeric rotation keys preserve signed turns. An incoming `rotationPath` on a rotation key describes the route from the preceding key, with 2–4096 points and matching endpoints. Interpolate consecutive quaternions by angular distance, then unwrap Euler angles. Ease belongs to the preceding key: `smooth` uses `t*t*(3-2*t)`, `ease-in` uses `t*t`, `ease-out` uses `1-(1-t)^2`, and `linear` uses `t`.
 - Optional key `valueHandles: {in?: [x,y,z], out?: [x,y,z]}` stores per-axis horizontal Bézier influence fractions, each `null` (unchanged) or finite in `[0.01,1]`. For a segment from A to B, A's outgoing handle and B's incoming handle control its value interpolation. Handle time is the fraction of that source-time interval, and handle value equals its key's value (zero endpoint slope). Solve the cubic time coordinate before evaluating its value coordinate. An untouched opposite handle uses one-third interval with the legacy ease's endpoint tangent, bounded to the endpoint values. Axes with neither handle use the original ease/rotation path unchanged; edited rotation axes use signed numeric Euler values. Handles remain attached when keys move, persist in library assets, and participate in guide staleness. Value Graph labels use scene time after clip stretch and optional velocity retiming; values use scene units, degrees, or scale factors, not speed.
@@ -59,6 +59,9 @@ V1 imports add track ownership without rewriting motion. `validateProject` valid
 | `GET /projects` | None | `[{id,name,updatedAt,duration,objectCount,hasMotion,preview}]`, newest first; preview is a compact first-frame scene snapshot (objects, joints, optional camera/web effect) without animation tracks |
 | `GET /projects/:id` | None | Project |
 | `DELETE /projects/:id` | None | 204, idempotent removal of the project record; shared media and jobs are retained |
+| `POST /director/turns` | Director input containing project, context, history, and request text | Cached-first demo or live Director turn; known Demo commands do not require Gemini |
+| `POST /director/proposals/:id/decision` | Session, revision, decision, and current project | Persistent approval/cancel/refresh result |
+| `GET /director/executions/:id` | None | Director execution status |
 | `POST /objects` | `{name,kind,dimensions,scale?,referenceAssetIds}` | `{id,object,createdAt}`, 201 |
 | `GET /objects` | None | Saved object library |
 | `POST /proposals` | `{mode:"live",kind,prompt,project,objectId}` | Proposal, 201 |
@@ -70,6 +73,8 @@ V1 imports add track ownership without rewriting motion. `validateProject` valid
 JSON writes use `application/json`; uploads use raw bytes and image/video Content-Type, without multipart/base64. Asset IDs are SHA-256 of role plus bytes, deduplicated by content. Metadata contains `id,role,mimeType,size,createdAt`, plus guide `width,height,duration`. Roles: reference, guide, output.
 
 Errors: `{"error":{"code":"INVALID_INPUT","message":"...","details":[]}}`; details are optional. Missing credentials return 503 with `GEMINI_NOT_CONFIGURED` / `FAL_NOT_CONFIGURED`. No prepared result substitutes for a failure.
+
+When `project.demo` is true, Director checks the deterministic classroom intent catalog before calling Gemini. Cached turns and proposals carry `source:"demo-cache"`; fallbacks carry `source:"live"`. Cached scene changes still require approval and use the same atomic Director actions as live requests. Demo mode never changes camera state.
 
 ## Proposals
 

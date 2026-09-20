@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createProp } from './prop';
 import type { ProjectPreview } from '../core/projectPreview';
-import { toQuaternion } from '../core/project';
+import { HUMANOID_DIMENSIONS, toQuaternion } from '../core/project';
 import { createMannequin, type Mannequin } from './mannequin';
 import { SHOT_ASPECT, SHOT_FOV } from './shotCamera';
 import { createWebLine } from './webLine';
@@ -24,37 +24,39 @@ function createPreviewRenderer() {
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshStandardMaterial({ color: '#e6e4df', roughness: 1 }));
   ground.rotation.x = -Math.PI / 2; ground.position.y = -.015; ground.receiveShadow = true; scene.add(ground);
   let props: ReturnType<typeof createProp>[] = [];
-  let mannequin: Mannequin | undefined;
+  const mannequins = new Map<string, Mannequin>();
 
   return {
     async capture(preview: ProjectPreview) {
       props.forEach(prop => prop.dispose()); props = [];
       content.clear();
-      const hasHumanoid = preview.objects.some(object => object.kind === 'humanoid');
-      if (hasHumanoid && !mannequin) {
-        mannequin = await createMannequin();
-        mannequin.markers.forEach(marker => { marker.visible = false; });
-      }
+      const humanoidIds = new Set(preview.objects.filter(object => object.kind === 'humanoid').map(object => object.id));
+      for (const [id, mannequin] of mannequins) if (!humanoidIds.has(id)) { mannequin.dispose(); mannequins.delete(id); }
+      await Promise.all([...humanoidIds].map(async id => {
+        if (mannequins.has(id)) return;
+        const mannequin = await createMannequin(); mannequin.markers.forEach(marker => { marker.visible = false; }); mannequins.set(id, mannequin);
+      }));
       for (const object of preview.objects) {
         const prop = object.kind === 'box' ? createProp(object) : undefined;
+        const mannequin = object.kind === 'humanoid' ? mannequins.get(object.id)! : undefined;
         const root = prop ? prop.root : mannequin!.root;
         if (object.kind === 'box') {
           props.push(prop!);
         } else {
           mannequin!.setHeroAppearance(object.appearance === 'spider');
-          for (const [id, rotation] of Object.entries(preview.pose)) mannequin!.setJointPose(id, rotation);
+          for (const [id, rotation] of Object.entries(preview.poses[object.id] ?? {})) mannequin!.setJointPose(id, rotation);
         }
         root.position.fromArray(object.position); root.quaternion.copy(toQuaternion(object.rotation)); root.scale.fromArray(object.scale);
-        if (object.kind === 'humanoid') root.scale.multiply(new THREE.Vector3(object.dimensions[0] / .7, object.dimensions[1] / 1.9, object.dimensions[2] / .4));
+        if (object.kind === 'humanoid') root.scale.multiply(new THREE.Vector3(...object.dimensions.map((value, index) => value / HUMANOID_DIMENSIONS[index]) as [number, number, number]));
         content.add(root);
       }
       content.updateMatrixWorld(true);
-      webLine.show(preview.web ?? null, mannequin ?? null);
+      webLine.show(preview.web ?? null, mannequins.get('humanoid') ?? null);
       camera.far = 500;
       if (preview.camera) {
         camera.position.fromArray(preview.camera.position); camera.quaternion.copy(toQuaternion(preview.camera.rotation));
       } else {
-        if (hasHumanoid) mannequin?.meshes.forEach(mesh => mesh.computeBoundingBox());
+        mannequins.forEach(mannequin => mannequin.meshes.forEach(mesh => mesh.computeBoundingBox()));
         const bounds = new THREE.Box3().setFromObject(content);
         if (preview.web) bounds.union(new THREE.Box3().setFromObject(webContent));
         const center = bounds.isEmpty() ? new THREE.Vector3(0, .95, 0) : bounds.getCenter(new THREE.Vector3());
@@ -69,7 +71,7 @@ function createPreviewRenderer() {
       return renderer.domElement.toDataURL('image/jpeg', .85);
     },
     dispose() {
-      mannequin?.dispose(); webLine.dispose(); props.forEach(prop => prop.dispose()); ground.geometry.dispose(); ground.material.dispose();
+      mannequins.forEach(mannequin => mannequin.dispose()); webLine.dispose(); props.forEach(prop => prop.dispose()); ground.geometry.dispose(); ground.material.dispose();
       light.shadow.map?.dispose(); renderer.dispose(); renderer.forceContextLoss();
     },
   };
