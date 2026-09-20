@@ -88,6 +88,10 @@ export const phoneCamera = {
   get: () => state,
   subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
   pose: () => live,
+  positionDiagnostics: () => {
+    const fresh = latest && performance.now() - receivedAt <= 500;
+    return { received: fresh ? [...latest!.position] : null, mapped: fresh && live ? [...live.position] : null };
+  },
   async pair() {
     phoneCamera.disconnect(); const current = ++revision;
     update({ message: 'Opening phone connection…' });

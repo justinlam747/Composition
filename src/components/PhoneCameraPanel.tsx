@@ -5,6 +5,8 @@ import { latencyPercentile } from '../core/phoneLatency';
 
 export default function PhoneCameraPanel({ onClose }: { onClose: () => void }) {
   const phone = usePhoneCamera();
+  const [positions, setPositions] = useState(phoneCamera.positionDiagnostics);
+  const xyz = (value: number[] | null) => value ? value.map(number => number.toFixed(3)).join(', ') : '—';
   const preview = phone.preview, diagnostic = preview.diagnostics;
   const ms = (value: number | null | undefined) => value == null ? '—' : `${value.toFixed(1)} ms`;
   function exportResults() {
@@ -16,8 +18,9 @@ export default function PhoneCameraPanel({ onClose }: { onClose: () => void }) {
   }
   const [enabled, setEnabled] = useState<boolean | null>(null);
   useEffect(() => { let active = true;
+    const timer = setInterval(() => setPositions(phoneCamera.positionDiagnostics()), 250);
     fetch('/api/phone').then(response => response.json()).then(value => { if (active) setEnabled(value.enabled); }).catch(() => { if (active) setEnabled(false); });
-    return () => { active = false; phoneCamera.disconnect(); };
+    return () => { active = false; clearInterval(timer); phoneCamera.disconnect(); };
   }, []);
   return <aside className="assistant-panel" aria-label="Phone camera">
     <div className="panel-heading"><div><span className="eyebrow">Move to direct</span><h2><Smartphone size={19} /> Phone camera</h2></div><button className="icon-button" aria-label="Close phone camera" onClick={onClose}><X size={19} /></button></div>
@@ -32,6 +35,12 @@ export default function PhoneCameraPanel({ onClose }: { onClose: () => void }) {
         : <button className="button primary" disabled={!phone.aligned} onClick={phoneCamera.record}><Circle size={15} />Record camera move</button>}
       {phone.aligned && !phone.recording && <button className="button secondary" onClick={phoneCamera.stop}>Return to editing</button>}
       <button className="button secondary" onClick={phoneCamera.disconnect}>Disconnect phone</button>
+      {phone.connected && <section className="phone-latency" aria-label="Position tracking">
+        <h3>Position tracking</h3>
+        <dl><dt>Received phone XYZ (m)</dt><dd><output aria-label="Received phone position">{xyz(positions.received)}</output></dd>
+          <dt>Mapped camera XYZ (m)</dt><dd><output aria-label="Mapped camera position">{xyz(positions.mapped)}</output></dd></dl>
+        <p className="small-copy">Updates live without recording. Mapped position appears after Set starting pose. Stale readings clear after half a second. The inspector shows saved keys, not this live camera position.</p>
+      </section>}
       {phone.connected && <section className="phone-latency" aria-label="Latency experiment">
         <h3>Latency experiment</h3>
         <label className="field-label">Preview mode<select aria-label="Preview mode" value={preview.mode} onChange={event => void phoneCamera.configurePreview(event.target.value as 'jpeg' | 'webrtc', preview.fps)}>

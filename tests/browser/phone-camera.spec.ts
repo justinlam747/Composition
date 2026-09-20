@@ -16,13 +16,45 @@ async function pair(page: Page) {
   const code = await page.locator('.phone-pairing strong').innerText();
   const phone = new WebSocket(`ws://127.0.0.1:3004/phone?code=${code}`); await once(phone, 'open');
   let sequence = 0, tracking = 'normal';
+  let position: number[] | undefined, quaternion = [0, 0, 0, 1];
   const timer = setInterval(() => {
     if (phone.readyState === WebSocket.OPEN) phone.send(JSON.stringify({ type: 'pose', version: 1, seq: ++sequence, time: sequence / 30,
-      tracking, position: [sequence / 300, 0, 0], quaternion: [0, 0, 0, 1] }));
+      tracking, position: position ?? [sequence / 300, 0, 0], quaternion }));
   }, 34);
   await expect(page.getByText('Tracking ready', { exact: true })).toBeVisible();
-  return { phone, limited: () => { tracking = 'limited'; }, close: () => { clearInterval(timer); phone.close(); } };
+  return { phone, limited: () => { tracking = 'limited'; }, pause: () => clearInterval(timer),
+    pose: (value: number[], rotation = [0, 0, 0, 1]) => { position = value; quaternion = rotation; },
+    close: () => { clearInterval(timer); phone.close(); } };
 }
+
+test('shows received and mapped translation live without recording, and clears stale readings', async ({ page }) => {
+  const sender = await pair(page);
+  const received = page.getByLabel('Received phone position', { exact: true });
+  const mapped = page.getByLabel('Mapped camera position', { exact: true });
+  const cameraPose = () => page.evaluate(async () => {
+    const path = '/src/scene/phoneCamera.ts'; return (await import(path)).phoneCamera.pose();
+  });
+  try {
+    sender.pose([0, 0, 0]);
+    await expect(received).toHaveText('0.000, 0.000, 0.000'); await expect(mapped).toHaveText('—');
+    await page.getByRole('button', { name: 'Set starting pose', exact: true }).click();
+    await expect(mapped).not.toHaveText('—');
+    const start = await cameraPose();
+    sender.pose([0, 0, -0.5]);
+    await expect(received).toHaveText('0.000, 0.000, -0.500');
+    await expect.poll(async () => {
+      const next = await cameraPose(); return Math.hypot(...next.position.map((v: number, i: number) => v - start.position[i]));
+    }).toBeCloseTo(.5, 6);
+    const moved = await cameraPose();
+    await expect(mapped).toHaveText(moved.position.map((v: number) => v.toFixed(3)).join(', '));
+    sender.pose([0, 0, -0.5], [0, Math.sin(.3), 0, Math.cos(.3)]);
+    await expect.poll(async () => (await cameraPose()).quaternion).not.toEqual(moved.quaternion);
+    expect((await cameraPose()).position).toEqual(moved.position);
+    expect((await scene(page)).project.clips ?? []).toHaveLength(0);
+    sender.pause();
+    await expect(received).toHaveText('—'); await expect(mapped).toHaveText('—');
+  } finally { sender.close(); }
+});
 
 test('phone stream drives a transient camera and records an undoable, persistent camera block with a returned preview', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));

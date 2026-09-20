@@ -12,6 +12,7 @@ final class MotionController: NSObject, ObservableObject, ARSessionDelegate, WKN
     @Published private(set) var trackingReady = false
     @Published private(set) var aligned = false
     @Published private(set) var recording = false
+    @Published private(set) var positionReadout = "Waiting for ARKit position…"
     @Published private(set) var message = "Open Phone camera in the desktop editor and choose Pair iPhone."
     @Published private(set) var receiverVisible = false
     private var receiverLoaded = false
@@ -36,6 +37,8 @@ final class MotionController: NSObject, ObservableObject, ARSessionDelegate, WKN
     private var lastSent: TimeInterval = -1
     private var sending = false
     private var generation = 0
+    private var positionReadoutAt: TimeInterval = -1
+    private var outgoingPosition: SIMD3<Float>?
 
     override init() {
         super.init()
@@ -175,26 +178,50 @@ final class MotionController: NSObject, ObservableObject, ARSessionDelegate, WKN
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        guard let task = socket, !sending, frame.timestamp - lastSent >= 1.0 / 30.0 else { return }
         let quality: String
+        let label: String
         switch frame.camera.trackingState {
-        case .normal: quality = "normal"
-        case .limited: quality = "limited"
-        case .notAvailable: quality = "unavailable"
+        case .normal:
+            quality = "normal"; label = "Tracking ready"
+        case .limited(let reason):
+            quality = "limited"
+            switch reason {
+            case .initializing: label = "Tracking limited · initializing"
+            case .insufficientFeatures: label = "Tracking limited · too few room features"
+            case .excessiveMotion: label = "Tracking limited · move more slowly"
+            case .relocalizing: label = "Tracking limited · finding the room again"
+            @unknown default: label = "Tracking limited"
+            }
+        case .notAvailable:
+            quality = "unavailable"; label = "Tracking unavailable"
         }
         let ready = quality == "normal"
         if trackingReady != ready { trackingReady = ready }
-        let label = ready ? "Tracking ready" : "Move slowly · finding room features"
         if tracking != label { tracking = label }
+        // Observe ARKit independently of socket backpressure. A frozen outgoing
+        // position must not look like a frozen sensor, or vice versa.
+        if frame.timestamp - positionReadoutAt >= 0.25 {
+            positionReadoutAt = frame.timestamp
+            let world = frame.camera.transform.columns.3
+            let raw = SIMD3<Float>(world.x, world.y, world.z)
+            let outgoing = outgoingPosition.map(positionText) ?? "Waiting for pose send…"
+            positionReadout = "AR XYZ (m)\n\(positionText(raw))\nOutgoing XYZ (m)\n\(outgoing)\nAR frame: \(String(format: "%.2f", frame.timestamp)) s"
+        }
+        guard let task = socket, !sending, frame.timestamp - lastSent >= 1.0 / 30.0 else { return }
         // Invert the landscape view matrix to get camera-to-world. Y is up, meters,
         // camera looks along -Z, quaternion order is x/y/z/w (matching Three.js).
         let pose = frame.camera.viewMatrix(for: .landscapeRight).inverse
         let position = pose.columns.3
         let q = simd_normalize(simd_quatf(pose)).vector
+        outgoingPosition = SIMD3<Float>(position.x, position.y, position.z)
         sequence += 1; lastSent = frame.timestamp; sending = true
         send(["type": "pose", "version": 1, "seq": sequence, "time": frame.timestamp,
               "tracking": quality, "position": [position.x, position.y, position.z],
               "quaternion": [q.x, q.y, q.z, q.w]], through: task, pose: true)
+    }
+
+    private func positionText(_ position: SIMD3<Float>) -> String {
+        String(format: "%.3f, %.3f, %.3f", position.x, position.y, position.z)
     }
 
     private func send(_ object: [String: Any], through task: URLSessionWebSocketTask, pose: Bool = false) {
@@ -227,6 +254,7 @@ final class MotionController: NSObject, ObservableObject, ARSessionDelegate, WKN
         previous?.cancel(with: .goingAway, reason: nil)
         session.pause()
         active = false; aligned = false; recording = false; trackingReady = false; sending = false
+        positionReadoutAt = -1; outgoingPosition = nil; positionReadout = "Waiting for ARKit position…"
         tracking = "Waiting for tracking"; self.message = message
         UIApplication.shared.isIdleTimerDisabled = false
     }

@@ -49,6 +49,9 @@ private struct CameraScreen: View {
                             .buttonStyle(.borderedProminent)
                     } else {
                         Label(controller.tracking, systemImage: controller.trackingReady ? "checkmark.circle" : "viewfinder")
+                        Text(controller.positionReadout).font(.system(.caption2, design: .monospaced))
+                        Text("Live position; no recording needed. Keep the rear camera uncovered and pointed at room details.")
+                            .font(.caption2).foregroundStyle(.secondary)
                         Button("Set starting pose") { controller.control("align") }
                             .disabled(!controller.trackingReady || controller.recording).buttonStyle(.bordered)
                         Button(controller.recording ? "Stop & save" : "Record move") {

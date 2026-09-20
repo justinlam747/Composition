@@ -36,8 +36,16 @@ The native controls send `{"type":"control","action":"align"}`, `record`, or `st
 
 ## Verification and remaining device acceptance
 
+### Diagnosing rotation without translation
+
+Recording is not required. The companion shows **AR XYZ** directly from `ARCamera.transform`, **Outgoing XYZ** from the existing landscape-pose packet, and a frame timestamp. These refresh four times per second independently of socket backpressure. The tracking label distinguishes initialization, insufficient features, excessive motion, and relocalization. These readouts do not change the tracking configuration or motion mapping.
+
+On the Mac, **Position tracking** shows the received phone coordinates and mapped virtual-camera coordinates in meters. Mapped coordinates appear after alignment; both clear if poses are stale for over half a second. The scene inspector displays saved keyframes, not the transient phone-controlled camera, so use these live readouts for this test.
+
+Move the phone without turning and compare the values. If AR XYZ stays fixed while the frame time advances, inspect native tracking first. If AR XYZ changes but outgoing/received values do not, investigate pose extraction or delivery. If received and mapped positions change but the view does not, investigate viewport application/rendering. Check these stages before treating a tracking hypothesis as a confirmed cause; this diagnostic change does not establish that physical translation is working.
+
 Windows tests exercise real WebSocket/SSE transport, alignment math, full-turn recording and retiming, pose validation, code/origin rejection, preview delivery, tracking loss, undo/redo, and saved-project restoration using synthetic phone poses. These do not establish ARKit accuracy or iPhone build success.
 
-The native project compiled, signed, and installed on the paired iPhone in this workspace. iOS blocked automatic launch with a signing/trust error; WebKit playback and ARKit behavior still require physical-device acceptance after the developer profile is trusted. On hardware, verify camera/local-network permission prompts, landscape orientation, walking one meter forward/backward, panning and roll, preview latency, interruption/background recovery, and return-to-start drift. Compare the replay with the movement before relying on it in a demonstration.
+The native project compiled, signed, and installed on the paired iPhone in this workspace. After trusting the developer profile, the user reported successful connection and rotation, but no forward/backward translation. A diagnostic build with native and desktop position readouts is installed; the translation cause remains unconfirmed. All 92 unit/server tests, five focused phone browser tests, and the web/native builds passed for this diagnostic change. These tests use synthetic motion, not a physical translation benchmark. On hardware, verify walking one meter forward/backward, sideways movement, panning and roll, preview latency, interruption/background recovery, and return-to-start drift. Compare the replay with the movement before relying on it in a demonstration.
 
 Apple references: [ARKit world tracking](https://developer.apple.com/documentation/arkit/arworldtrackingconfiguration), [camera transforms](https://developer.apple.com/documentation/arkit/arcamera/transform), [URLSession WebSockets](https://developer.apple.com/documentation/foundation/urlsessionwebsockettask), and [local network privacy](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
