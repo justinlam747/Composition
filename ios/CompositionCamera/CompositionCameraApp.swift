@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 @main
 struct CompositionCameraApp: App {
@@ -24,8 +25,8 @@ private struct CameraScreen: View {
         HStack(spacing: 20) {
             ZStack {
                 Color.black
-                if let preview = controller.preview {
-                    Image(uiImage: preview).resizable().aspectRatio(contentMode: .fit)
+                if controller.receiverVisible {
+                    ReceiverView(webView: controller.webView)
                 } else {
                     VStack(spacing: 12) {
                         Image(systemName: "viewfinder").font(.largeTitle)
@@ -34,12 +35,12 @@ private struct CameraScreen: View {
                             .font(.caption).multilineTextAlignment(.center)
                     }.foregroundStyle(.white).padding()
                 }
-                VStack { HStack { Text("COMPOSITION · 16:9").font(.caption.bold()); Spacer() }; Spacer() }
-                    .foregroundStyle(.white).padding()
+                VStack { HStack { Text("COMPOSITION · LATENCY LAB").font(.caption.bold()); Spacer() }; Spacer() }
+                    .foregroundStyle(.white).padding().allowsHitTesting(false)
             }.aspectRatio(16 / 9, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 18))
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Phone camera").font(.title2.bold())
+                    Text("Camera latency test").font(.title2.bold())
                     if !controller.active {
                         TextField("Computer address:port", text: $address)
                             .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
@@ -63,4 +64,10 @@ private struct CameraScreen: View {
             }.frame(width: 230)
         }.padding(20).tint(.orange)
     }
+}
+
+private struct ReceiverView: UIViewRepresentable {
+    let webView: WKWebView
+    func makeUIView(context: Context) -> WKWebView { webView }
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
 }

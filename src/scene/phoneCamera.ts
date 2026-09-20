@@ -4,20 +4,20 @@ import { phonePoseSchema, type PhoneEvent, type PhonePairing, type PhonePose } f
 import { alignPhone, cameraTake, interpolateMotionSample, type MotionSample } from '../core/phoneMotion';
 import { studio } from '../core/store';
 import { changeCameraView } from './cameraNavigation';
+import { PhonePreview, initialPreviewState, type PreviewState } from './phonePreview';
 
 interface State {
   pairing: PhonePairing | null; connected: boolean; tracking: 'waiting' | PhonePose['tracking'];
   aligned: boolean; recording: boolean; elapsed: number; message: string;
+  preview: PreviewState;
 }
-let state: State = { pairing: null, connected: false, tracking: 'waiting', aligned: false, recording: false, elapsed: 0, message: '' };
+let state: State = { pairing: null, connected: false, tracking: 'waiting', aligned: false, recording: false, elapsed: 0, message: '', preview: initialPreviewState };
 const listeners = new Set<() => void>();
 let events: EventSource | undefined, watch: ReturnType<typeof setInterval> | undefined;
 let latest: PhonePose | undefined, receivedAt = 0, revision = 0;
 let mapPose: ReturnType<typeof alignPhone> | undefined, live: MotionSample | undefined;
 let take: { project: Project; start: number; limit: number; samples: MotionSample[] } | undefined;
-let previewAt = 0, previewBusy = false;
-const previewCanvas = typeof document === 'undefined' ? undefined : document.createElement('canvas');
-if (previewCanvas) { previewCanvas.width = 480; previewCanvas.height = 270; }
+const preview = typeof document === 'undefined' ? undefined : new PhonePreview(value => update({ preview: value }));
 function update(patch: Partial<State>) { state = { ...state, ...patch }; listeners.forEach(listener => listener()); }
 function sendState() {
   if (state.pairing) void fetch(`/api/phone/${state.pairing.id}/state`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -41,10 +41,15 @@ function loseTracking(message: string) {
 function receive(event: PhoneEvent) {
   if (event.type === 'ended') { phoneCamera.disconnect(); return; }
   if (event.type === 'connection') {
+    if (event.connected && !state.connected && state.pairing) preview?.connect(state.pairing.id);
     update({ connected: event.connected });
-    if (!event.connected) loseTracking('Phone disconnected. Any captured motion was saved; reconnect and set the starting pose again.');
+    if (!event.connected) { preview?.disconnect(); loseTracking('Phone disconnected. Any captured motion was saved; reconnect and set the starting pose again.'); }
     return;
   }
+  if (event.type === 'preview-ready') { preview?.receiverReady(); return; }
+  if (event.type === 'signal') { preview?.signal(event); return; }
+  if (event.type === 'pulse') { preview?.pulse(event.streamId, event.id); return; }
+  if (event.type === 'diagnostics') { preview?.diagnostics(event); return; }
   if (event.type === 'control') {
     if (event.action === 'align') void phoneCamera.align();
     if (event.action === 'record') phoneCamera.record();
@@ -56,6 +61,7 @@ function receive(event: PhoneEvent) {
   if (latest && (pose.seq <= latest.seq || pose.time <= latest.time)) return;
   if (latest && pose.time - latest.time > .35 && state.aligned) loseTracking('Tracking paused. The captured portion was saved. Set the starting pose again.');
   latest = pose; receivedAt = performance.now();
+  preview?.poseReceived();
   if (state.tracking !== pose.tracking) update({ tracking: pose.tracking });
   if (pose.tracking !== 'normal') {
     if (state.aligned) stopTake('Tracking is limited. The captured portion was saved. Move slowly, then set the starting pose again.');
@@ -122,6 +128,7 @@ export const phoneCamera = {
   },
   stop: () => stopTake(take ? undefined : 'Phone control paused. Saved camera motion is unchanged.'),
   disconnect() {
+    preview?.disconnect();
     revision++; events?.close(); events = undefined; clearInterval(watch); watch = undefined;
     const id = state.pairing?.id;
     stopTake(take ? undefined : 'Phone disconnected.'); latest = undefined;
@@ -129,17 +136,9 @@ export const phoneCamera = {
     if (id) void fetch(`/api/phone/${id}`, { method: 'DELETE', keepalive: true }).catch(() => {});
   },
   preview(canvas: HTMLCanvasElement, frame: { x: number; y: number; width: number; height: number }, cssWidth: number) {
-    if (!state.connected || !state.pairing || !previewCanvas || previewBusy || performance.now() - previewAt < 160) return;
-    const context = previewCanvas.getContext('2d'); if (!context) return;
-    previewAt = performance.now(); previewBusy = true;
-    const id = state.pairing.id, ratio = canvas.width / cssWidth;
-    context.drawImage(canvas, frame.x * ratio, frame.y * ratio, frame.width * ratio, frame.height * ratio, 0, 0, 480, 270);
-    previewCanvas.toBlob(blob => {
-      if (!blob || state.pairing?.id !== id) { previewBusy = false; return; }
-      void fetch(`/api/phone/${id}/preview`, { method: 'POST', body: blob, signal: AbortSignal.timeout(1500) })
-        .catch(() => {}).finally(() => { previewBusy = false; });
-    }, 'image/jpeg', .65);
+    if (state.connected) preview?.frame(canvas, frame, cssWidth, !!live);
   },
+  configurePreview: (mode: PreviewState['mode'], fps: 30 | 60 = 60) => preview?.configure(mode, fps),
 };
 const hide = () => { if (document.hidden) stopTake('Phone control paused because the editor was hidden. Set the starting pose again.'); };
 if (typeof window !== 'undefined') {

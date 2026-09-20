@@ -1,6 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
+import type { PhoneDiagnostics } from '../../src/core/phoneProtocol';
+
+declare global { interface Window {
+  receiver: { accept(message: unknown): Promise<void>; close(): void };
+  nativeMessage(message: unknown): void;
+} }
 
 async function scene(page: Page) { return page.evaluate(async () => { const path = '/src/core/store.ts'; return (await import(path)).studio.get(); }); }
 async function pair(page: Page) {
@@ -78,4 +84,48 @@ test('leaving during a take immediately persists the captured motion', async ({ 
     expect(saved.clips).toHaveLength(1);
     await page.reload(); expect((await scene(page)).project.clips).toEqual(saved.clips);
   } finally { sender.close(); }
+});
+
+test('compares actual JPEG and WebRTC pixels, measures 20 pulses and cleans up on switching', async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const sender = await pair(page), receiver = await browser.newPage();
+  const errors: string[] = [], diagnostics: PhoneDiagnostics[] = [];
+  receiver.on('pageerror', error => errors.push(error.message));
+  await receiver.exposeFunction('nativeMessage', (message: { type: string }) => {
+    if (message.type === 'receiver-ready') sender.phone.send(JSON.stringify({ type: 'preview-ready', version: 1 }));
+    else { if (message.type === 'diagnostics') diagnostics.push(message as PhoneDiagnostics); sender.phone.send(JSON.stringify(message)); }
+  });
+  await receiver.addInitScript(() => {
+    Object.assign(window, { webkit: { messageHandlers: { receiver: { postMessage: (value: unknown) => window.nativeMessage(value) } } } });
+  });
+  sender.phone.on('message', (data, binary) => {
+    const message = binary ? { type: 'jpeg', data: data.toString('base64') } : JSON.parse(data.toString());
+    if (['jpeg', 'preview-config', 'signal', 'render-stats'].includes(message.type)) void receiver.evaluate(value => window.receiver.accept(value), message).catch(() => {});
+  });
+  try {
+    await receiver.goto('http://127.0.0.1:5174/phone-receiver.html');
+    await page.getByRole('button', { name: 'Set starting pose', exact: true }).click();
+    const pulse = receiver.getByRole('button', { name: 'Run 20 latency pulses' });
+    await expect(pulse).toBeEnabled(); await pulse.click();
+    await expect.poll(() => diagnostics.at(-1)?.samples.length, { timeout: 20000 }).toBe(20);
+    expect(diagnostics.at(-1)?.timedOut).toBe(0);
+    await page.getByRole('combobox', { name: 'Preview mode' }).selectOption('webrtc');
+    await expect(receiver.locator('#video')).toBeVisible();
+    await expect.poll(() => diagnostics.at(-1)?.fps, { timeout: 15000 }).toBeGreaterThan(0);
+    expect(await receiver.locator('video').evaluate(el => (el as HTMLVideoElement).srcObject instanceof MediaStream && ((el as HTMLVideoElement).srcObject as MediaStream).getAudioTracks().length)).toBe(0);
+    await expect(pulse).toBeEnabled(); await pulse.click();
+    await expect.poll(() => diagnostics.at(-1)?.samples.length, { timeout: 20000 }).toBe(20);
+    expect(diagnostics.at(-1)?.timedOut).toBe(0);
+    await page.getByRole('button', { name: 'Record camera move', exact: true }).click();
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: /Stop & save/ }).click();
+    expect((await scene(page)).project.clips).toHaveLength(1);
+    const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export latency results' }).click();
+    expect((await download).suggestedFilename()).toContain('webrtc');
+    await page.getByRole('combobox', { name: 'Preview mode' }).selectOption('jpeg');
+    await expect(receiver.locator('#video')).toBeHidden();
+    expect(await receiver.locator('video').evaluate(el => (el as HTMLVideoElement).srcObject)).toBeNull();
+    await expect(receiver.locator('#jpeg')).toBeVisible();
+    expect(errors).toEqual([]);
+  } finally { sender.close(); await receiver.close(); }
 });

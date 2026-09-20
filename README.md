@@ -48,7 +48,7 @@ Portable files are [the scene](public/demos/spider-man.scene.json), [the animati
 
 ## Camera and AR
 
-**Phone camera** connects an ARKit iPhone companion to the Windows editor for live position/orientation control, a returned virtual-shot preview, and editable recorded camera blocks. Run `npm run dev:phone`, then open the phone icon to pair. The companion Xcode project is in `ios/CompositionCamera.xcodeproj`; building/installing it requires a Mac. See [setup, controls and device acceptance](docs/phone-camera.md). The desktop transport is tested with synthetic poses; the native app still needs an Xcode build and physical iPhone testing.
+**Phone camera** connects an ARKit iPhone companion to the Mac or Windows editor for live position/orientation control, a returned virtual-shot preview, and editable recorded camera blocks. Run `npm run dev:phone`, then open the phone icon to pair. The companion Xcode project is in `ios/CompositionCamera.xcodeproj`; building/installing it requires a Mac. See [setup, controls and device acceptance](docs/phone-camera.md) and the [JPEG vs WebRTC latency experiment](docs/phone-latency-experiment.md). The native app compiles for iPhoneOS; physical iPhone acceptance and measured device latency remain required.
 
 **Camera view** adds a scene camera and looks through its fixed 16:9 frame. Drag in the frame to aim, use WASD to move, and Q/E to move down/up (Shift moves faster). These edits save position and rotation keys at the current playhead; choose another time in **Animate** to build a camera move. **Key camera** keys both channels. Drag timeline keys to retime the move and choose Smooth or Linear interpolation. No lens settings are needed.
 

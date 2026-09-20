@@ -1,6 +1,6 @@
 # Phone camera capture
 
-The iPhone companion uses ARKit world tracking to send camera position and orientation to the Windows editor. The editor displays a live virtual camera and returns a 480×270 JPEG shot monitor to the phone at up to six frames per second. Phone camera images are never transmitted. The shot monitor shows the virtual scene, not an AR overlay on the room.
+The iPhone companion uses ARKit world tracking to send camera position and orientation to the Mac or Windows editor. The editor displays a live virtual camera and returns either the 480×270 JPEG baseline (up to six frames per second) or an experimental 960×540 WebRTC view targeting 60/30 fps. Phone camera images are never transmitted. The shot monitor shows the virtual scene, not an AR overlay on the room. See the [latency experiment](phone-latency-experiment.md) for comparison steps and measurement limits.
 
 ## Setup
 
@@ -32,12 +32,12 @@ The Mac is needed to build/sign/install the companion and updates. Once installe
 
 Time is the ARFrame monotonic timestamp in seconds; sequence and time must increase within a connection. Positions are in meters. Coordinates are right-handed, Y-up, camera forward is -Z, and quaternion order is x/y/z/w. The companion sends the inverse of `ARCamera.viewMatrix(for: .landscapeRight)`; its interface is locked to that orientation. Pose sending is limited to 30 Hz and one in-flight pose send. Tracking quality is `normal`, `limited`, or `unavailable`.
 
-The native controls send `{"type":"control","action":"align"}`, `record`, or `stop`. The phone receives text connection/state messages and binary JPEG previews. There is no video upload or paid generation request on the tracking listener.
+The native controls send `{"type":"control","action":"align"}`, `record`, or `stop`. The phone receives text connection/state messages and binary JPEG previews. The updated companion also loads the paired `/receiver?code=<code>` page into WebKit. Version-1 `preview-config`, `signal`, `pulse`, `diagnostics`, and `render-stats` messages drive the experiment. Desktop signaling uses `POST /api/phone/:id/signal`; answers and ICE candidates return through the native socket/SSE path. Each preview restart has a UUID stream ID to reject stale signaling. SDP is bounded to 64 KB, candidates to 2 KB, and WebSocket messages to 70 KB; non-signaling phone messages remain bounded to 4 KB. There is no video upload or paid generation request on the tracking listener.
 
 ## Verification and remaining device acceptance
 
 Windows tests exercise real WebSocket/SSE transport, alignment math, full-turn recording and retiming, pose validation, code/origin rejection, preview delivery, tracking loss, undo/redo, and saved-project restoration using synthetic phone poses. These do not establish ARKit accuracy or iPhone build success.
 
-The native project has not been compiled or run on a Mac/iPhone in this workspace. On hardware, verify camera/local-network permission prompts, landscape orientation, walking one meter forward/backward, panning and roll, preview latency, interruption/background recovery, and return-to-start drift. Compare the replay with the movement before relying on it in a demonstration.
+The native project compiled, signed, and installed on the paired iPhone in this workspace. iOS blocked automatic launch with a signing/trust error; WebKit playback and ARKit behavior still require physical-device acceptance after the developer profile is trusted. On hardware, verify camera/local-network permission prompts, landscape orientation, walking one meter forward/backward, panning and roll, preview latency, interruption/background recovery, and return-to-start drift. Compare the replay with the movement before relying on it in a demonstration.
 
 Apple references: [ARKit world tracking](https://developer.apple.com/documentation/arkit/arworldtrackingconfiguration), [camera transforms](https://developer.apple.com/documentation/arkit/arcamera/transform), [URLSession WebSockets](https://developer.apple.com/documentation/foundation/urlsessionwebsockettask), and [local network privacy](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
