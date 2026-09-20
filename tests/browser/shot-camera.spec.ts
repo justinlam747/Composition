@@ -75,8 +75,18 @@ test('scroll resizes the camera preview without changing the saved composition',
   const smallerBounds = (await frame.boundingBox())!;
   expect(smallerBounds.width / smallerBounds.height).toBeCloseTo(16 / 9, 1);
   expect((await cameraState(page)).project).toEqual(initialProject);
-  await page.getByRole('button', { name: 'Reset camera preview size', exact: true }).click();
+  const canvasBounds = (await canvas.boundingBox())!;
+  await page.mouse.move(canvasBounds.x + canvasBounds.width / 2, canvasBounds.y + canvasBounds.height / 2);
+  await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(canvasBounds.x + canvasBounds.width / 2 + 120, canvasBounds.y + canvasBounds.height / 2 - 80, { steps: 6 });
+  await page.mouse.up({ button: 'middle' });
+  await expect.poll(async () => (await frame.boundingBox())!.x).toBeGreaterThan(smallerBounds.x + 100);
+  await expect.poll(async () => (await frame.boundingBox())!.y).toBeLessThan(smallerBounds.y - 60);
+  expect((await cameraState(page)).project).toEqual(initialProject);
+  await page.getByRole('button', { name: 'Reset camera preview', exact: true }).click();
   await expect.poll(async () => (await frame.boundingBox())!.width).toBeCloseTo(initialBounds.width, 0);
+  const resetBounds = (await frame.boundingBox())!;
+  expect(resetBounds.x).toBeCloseTo(initialBounds.x, 0); expect(resetBounds.y).toBeCloseTo(initialBounds.y, 0);
   expect((await cameraState(page)).project).toEqual(initialProject);
 });
 

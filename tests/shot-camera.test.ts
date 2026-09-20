@@ -68,4 +68,10 @@ describe('saved shot camera', () => {
     expect(cameraPreviewFrame(1440, 900, 2)).toEqual(full);
     expect(cameraPreviewFrame(1440, 900, 0).width).toBeCloseTo(full.width * MIN_PREVIEW_SCALE);
   });
+  it('pans the editor preview without allowing it outside the viewport', () => {
+    const centered = cameraPreviewFrame(1440, 900, .5), moved = cameraPreviewFrame(1440, 900, .5, 120, -80);
+    expect(moved).toMatchObject({ x: centered.x + 120, y: centered.y - 80, width: centered.width, height: centered.height });
+    const clamped = cameraPreviewFrame(1440, 900, .5, 10000, -10000);
+    expect(clamped.x + clamped.width).toBe(1440); expect(clamped.y).toBe(0);
+  });
 });

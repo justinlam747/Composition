@@ -34,7 +34,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [frameScale, setFrameScale] = useState(1);
-  const resizeCameraPreview = useRef<(scale: number) => void>(() => {});
+  const resizeCameraPreview = useRef<(scale: number, resetPosition?: boolean) => void>(() => {});
   const state = useStudio();
   useEffect(() => {
     const container = host.current!;
@@ -181,7 +181,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       studio.setValue(value, s.channel === 'rotation' ? route ?? undefined : undefined);
     });
     const ray = new THREE.Raycaster(), pointer = new THREE.Vector2(), start = new THREE.Vector2();
-    let holding = false, piloting = false;
+    let holding = false, piloting = false, previewPanning = false;
     const keys = new Set<string>();
     const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE']);
     function moveCamera(target: THREE.Camera, dt: number) {
@@ -206,6 +206,9 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       start.set(event.clientX, event.clientY);
       renderer.domElement.focus({ preventScroll: true });
       const s = studio.get();
+      if (!s.phoneControl && !s.exporting && !s.playing && !s.preview && s.camera === 'shot' && event.button === 1) {
+        event.preventDefault(); previewPanning = true; renderer.domElement.setPointerCapture(event.pointerId); return;
+      }
       if (!s.phoneControl && !s.exporting && !s.playing && !s.preview && s.camera === 'shot' && event.button === 0 && !transform.axis) {
         holding = true; renderer.domElement.setPointerCapture(event.pointerId);
         if (s.camera === 'shot') beginPilot();
@@ -213,6 +216,10 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     }
     function pointerMove(event: PointerEvent) {
       const s = studio.get();
+      if (previewPanning) {
+        if (s.phoneControl || s.exporting || s.playing || s.preview || s.camera !== 'shot') { previewPanning = false; return; }
+        event.preventDefault(); moveCameraPreview(event.movementX, event.movementY); return;
+      }
       if (s.phoneControl || s.exporting || s.playing || s.preview || !holding || dragging || s.camera !== 'shot') return;
       const activeCamera = shot.camera;
       const look = new THREE.Euler().setFromQuaternion(activeCamera.quaternion, 'YXZ');
@@ -220,7 +227,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       if (s.camera === 'shot') savePilot();
     }
     function pointerUp(event: PointerEvent) {
-      holding = false;
+      holding = false; previewPanning = false;
       if (![...keys].some(key => movementKeys.has(key))) endPilot();
       if (renderer.domElement.hasPointerCapture(event.pointerId)) renderer.domElement.releasePointerCapture(event.pointerId);
       if (studio.get().exporting || ['ar', 'shot'].includes(studio.get().camera) || studio.get().preview || dragging || transform.axis || start.distanceTo(new THREE.Vector2(event.clientX, event.clientY)) > 5) return;
@@ -247,22 +254,31 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       keys.add(e.code);
     }
     function keyUp(e: KeyboardEvent) { keys.delete(e.code); if (!holding && ![...keys].some(key => movementKeys.has(key))) endPilot(); }
-    function blur() { keys.clear(); holding = false; endPilot(); if (dragging) { dragging = false; rotationPath = null; refinementBase = null; studio.end(); lastTime = -1; lastProject = null; } }
+    function blur() { keys.clear(); holding = false; previewPanning = false; endPilot(); if (dragging) { dragging = false; rotationPath = null; refinementBase = null; studio.end(); lastTime = -1; lastProject = null; } }
     function visibility() { if (document.hidden) { studio.patch({ playing: false }); blur(); } }
     renderer.domElement.addEventListener('pointerdown', pointerDown);
     renderer.domElement.addEventListener('pointermove', pointerMove);
     renderer.domElement.addEventListener('pointerup', pointerUp);
     renderer.domElement.addEventListener('pointercancel', blur);
     window.addEventListener('keydown', keyDown); window.addEventListener('keyup', keyUp); window.addEventListener('blur', blur); document.addEventListener('visibilitychange', visibility);
-    let previewScale = 1;
+    let previewScale = 1, previewOffsetX = 0, previewOffsetY = 0;
     function updateCameraFrame(width: number, height: number) {
-      const frame = cameraPreviewFrame(width, height, previewScale);
+      const centered = cameraPreviewFrame(width, height, previewScale);
+      previewOffsetX = Math.max(-centered.x, Math.min(centered.x, previewOffsetX));
+      previewOffsetY = Math.max(-centered.y, Math.min(centered.y, previewOffsetY));
+      const frame = cameraPreviewFrame(width, height, previewScale, previewOffsetX, previewOffsetY);
       for (const [name, value] of Object.entries(frame)) container.style.setProperty(`--frame-${name}`, `${value}px`);
     }
-    function setPreviewScale(scale: number) {
+    function setPreviewScale(scale: number, resetPosition = false) {
       const next = Math.max(MIN_PREVIEW_SCALE, Math.min(1, scale));
-      if (Math.abs(next - previewScale) < .001) return;
+      if (resetPosition) { previewOffsetX = 0; previewOffsetY = 0; }
+      if (Math.abs(next - previewScale) < .001 && !resetPosition) return;
       previewScale = next; setFrameScale(next);
+      const { width, height } = container.getBoundingClientRect();
+      if (width && height) updateCameraFrame(width, height);
+    }
+    function moveCameraPreview(x: number, y: number) {
+      previewOffsetX += x; previewOffsetY += y;
       const { width, height } = container.getBoundingClientRect();
       if (width && height) updateCameraFrame(width, height);
     }
@@ -344,7 +360,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
         savePilot();
       }
       if (inShot) {
-        const width = container.clientWidth, height = container.clientHeight, frame = cameraPreviewFrame(width, height, previewScale);
+        const width = container.clientWidth, height = container.clientHeight, frame = cameraPreviewFrame(width, height, previewScale, previewOffsetX, previewOffsetY);
         renderer.setViewport(0, 0, width, height); renderer.setScissorTest(false); renderer.clear();
         renderer.setViewport(frame.x, height - frame.y - frame.height, frame.width, frame.height);
         renderer.setScissor(frame.x, height - frame.y - frame.height, frame.width, frame.height); renderer.setScissorTest(true);
@@ -413,7 +429,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
   return <section className={`viewport${state.camera === 'camera' ? ' camera-active' : ''}${state.camera === 'shot' ? ' shot-active' : ''}`} aria-label="Scene editor" aria-busy={loading && !error}>
     <video ref={video} className={`camera-feed${mirrored ? ' mirrored' : ''}`} aria-label="Live camera preview" muted playsInline autoPlay hidden={ar.mode !== 'camera' || ar.phase !== 'live'} />
     <div ref={host} className="canvas-host"><div className="shot-frame" hidden={state.camera !== 'shot'} aria-label="Camera frame"><span>Camera · 16:9 · {Math.round(frameScale * 100)}%</span></div></div>
-    {state.camera === 'shot' && <button className="camera-frame-toggle icon-button" title={frameScale < 1 ? 'Reset camera preview size' : 'Shrink camera preview'} aria-label={frameScale < 1 ? 'Reset camera preview size' : 'Shrink camera preview'} aria-pressed={frameScale < 1} onClick={() => resizeCameraPreview.current(frameScale < 1 ? 1 : .72)}>{frameScale < 1 ? <Maximize2 size={18} /> : <Minimize2 size={18} />}</button>}
+    {state.camera === 'shot' && <button className="camera-frame-toggle icon-button" title={frameScale < 1 ? 'Reset camera preview' : 'Shrink camera preview'} aria-label={frameScale < 1 ? 'Reset camera preview' : 'Shrink camera preview'} aria-pressed={frameScale < 1} onClick={() => resizeCameraPreview.current(frameScale < 1 ? 1 : .72, frameScale < 1)}>{frameScale < 1 ? <Maximize2 size={18} /> : <Minimize2 size={18} />}</button>}
     {error && <div className="viewport-error" role="alert">{error}</div>}
     {state.directorPicking && <div className="director-placement-hint" role="status">Click the floor to place your marker <button onClick={() => studio.patch({ directorPicking: false })}>Cancel</button></div>}
     <div className="viewport-top">{state.camera !== 'shot' && <button className="frame-button icon-button" title="Frame selection (F)" aria-label="Frame character" onClick={() => studio.patch({ frameRequest: state.frameRequest + 1 })}><Focus size={19} /></button>}</div>
@@ -425,7 +441,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     {!state.project.objects.some(o => !o.hidden) && <div className="empty-scene"><Box size={30} /><h2>Add a character</h2><button className="button primary" onClick={studio.add}>Add sample mannequin</button></div>}
     {arOpen && state.camera !== 'ar' && <ARControls state={ar} experience={experience.current} mirrored={mirrored} onMirror={() => setMirrored(value => !value)} onClose={() => setAROpen(false)} />}
     {state.objectId === CAMERA_ID && state.selectionActive && state.camera === 'orbit' && <button className="button secondary camera-match" onClick={() => matchCamera.current()}>Set camera from this view</button>}
-    <div className="viewport-bottom"><div className="camera-switch"><button title="Drag to orbit; scroll to zoom" className={state.camera === 'orbit' ? 'selected' : ''} onClick={() => changeCameraView('orbit')}><MousePointer2 size={15} /> Orbit</button><button title="Drag to aim; scroll to resize preview; WASD to move; Q/E up and down. Edits key at the playhead." className={state.camera === 'shot' ? 'selected' : ''} disabled={loading || !!error || !!state.preview} onClick={() => changeCameraView('shot')}><Camera size={15} /> Camera view</button><button className={arOpen || ar.mode !== 'idle' ? 'selected' : ''} aria-expanded={arOpen} disabled={loading || !!error || !!state.preview} onClick={() => { setAROpen(open => !open); studio.patch({ selectionActive: false }); }}><Scan size={15} /> AR</button></div></div>
+    <div className="viewport-bottom"><div className="camera-switch"><button title="Drag to orbit; scroll to zoom" className={state.camera === 'orbit' ? 'selected' : ''} onClick={() => changeCameraView('orbit')}><MousePointer2 size={15} /> Orbit</button><button title="Drag to aim; middle-drag to move preview; scroll to resize preview; WASD to move; Q/E up and down. Edits key at the playhead." className={state.camera === 'shot' ? 'selected' : ''} disabled={loading || !!error || !!state.preview} onClick={() => changeCameraView('shot')}><Camera size={15} /> Camera view</button><button className={arOpen || ar.mode !== 'idle' ? 'selected' : ''} aria-expanded={arOpen} disabled={loading || !!error || !!state.preview} onClick={() => { setAROpen(open => !open); studio.patch({ selectionActive: false }); }}><Scan size={15} /> AR</button></div></div>
     {createPortal(<div ref={xrOverlay} className={`xr-overlay${state.camera === 'ar' ? ' is-active' : ''}`}>
       <div className="xr-instructions" role="status"><strong>Place your scene</strong><span>{ar.phase === 'starting' ? 'Starting room placement…' : ar.message}</span></div>
       <div className="xr-actions">

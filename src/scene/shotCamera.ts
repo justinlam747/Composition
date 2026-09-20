@@ -13,11 +13,17 @@ export function cameraFrame(width: number, height: number) {
   return { x: (width - w) / 2, y: (height - h) / 2, width: w, height: h };
 }
 
-export function cameraPreviewFrame(width: number, height: number, scale: number) {
+export function cameraPreviewFrame(width: number, height: number, scale: number, offsetX = 0, offsetY = 0) {
   const frame = cameraFrame(width, height);
   const previewScale = Math.max(MIN_PREVIEW_SCALE, Math.min(1, scale));
   const previewWidth = frame.width * previewScale, previewHeight = frame.height * previewScale;
-  return { x: (width - previewWidth) / 2, y: (height - previewHeight) / 2, width: previewWidth, height: previewHeight };
+  const centeredX = (width - previewWidth) / 2, centeredY = (height - previewHeight) / 2;
+  return {
+    x: centeredX + Math.max(-centeredX, Math.min(centeredX, offsetX)),
+    y: centeredY + Math.max(-centeredY, Math.min(centeredY, offsetY)),
+    width: previewWidth,
+    height: previewHeight,
+  };
 }
 
 export function createShotCamera(scene: THREE.Scene) {
