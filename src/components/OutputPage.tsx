@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, Download, Film, Play, Shapes, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Circle, Download, Film, Play, Shapes, Square, Triangle, X } from 'lucide-react';
 import { api, ApiError, assetUrl, type Capabilities, type Job } from '../core/api';
 import { studio, useStudio } from '../core/store';
 import { uid, type Project } from '../core/project';
@@ -15,6 +15,7 @@ import './output.css';
 
 const labels: Record<Job['status'], string> = { preparing: 'Uploading guide and references…', queued: 'Queued at Seedance…', running: 'Generating your video…', completed: 'Video ready', failed: 'Generation failed' };
 const steps = ['Preview', 'Direction', 'Generate'];
+const stepIcons = [Square, Circle, Triangle];
 export default function OutputPage({ onBack }: { onBack: () => void }) {
   const s = useStudio(), generation = s.project.generation;
   const [prompt, setPrompt] = useState(generation?.instructions ?? ''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
@@ -124,7 +125,7 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
     <header className="output-header"><div className="brand"><Shapes size={19} /><span>composition</span><span className="output-divider">/</span><span className="output-header-label">Output</span></div><button className="button secondary" disabled={busy || s.exporting} onClick={onBack}><ArrowLeft size={15} />Back to editor</button></header>
     <main className="output-main" aria-label="Output workflow">
       <div className="output-title"><div><h1>Output</h1><p>{s.project.name}</p></div><div className="output-services"><span className="service-label"><ServiceIcon service="gemini" />Gemini <small>Images</small></span><span className="service-label"><ServiceIcon service="fal" />fal <small>Video</small></span></div></div>
-      <nav aria-label="Output steps"><ol className="output-steps">{steps.map((label, index) => <li key={label}><button aria-current={step === index + 1 ? 'step' : undefined} disabled={busy || index === 1 && !canContinue || index === 2 && !jobId && !output && !canReviewGeneration} onClick={() => setStep(index + 1)}><span className="step-number">{index === 0 && canContinue || index === 1 && prompt.trim() && step === 3 ? <Check size={16} /> : index + 1}</span><span>{label}</span></button></li>)}</ol></nav>
+      <nav aria-label="Output steps"><ol className="output-steps">{steps.map((label, index) => { const StepIcon = stepIcons[index]; return <li key={label}><button aria-current={step === index + 1 ? 'step' : undefined} disabled={busy || index === 1 && !canContinue || index === 2 && !jobId && !output && !canReviewGeneration} onClick={() => setStep(index + 1)}><span className="step-icon" aria-hidden="true"><StepIcon size={13} /></span><span>{label}</span></button></li>; })}</ol></nav>
       <div className="output-layout">
         <section className="output-preview" aria-label="Composition preview">
           <div className="output-preview-heading"><span>{step === 3 && output ? 'Your generated video' : showBaseline ? 'Your visual baseline' : 'Your composition'}</span><span>{showBaseline ? '16:9' : `${previewDuration === null ? '—' : Math.round(previewDuration * 100) / 100}s · 720p · 16:9`}</span></div>

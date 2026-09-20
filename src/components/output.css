@@ -1,14 +1,11 @@
 .output-prompt-field { display: grid; gap: 12px; }
 .output-prompt-field .output-section-title { margin: 0; flex-wrap: wrap; gap: 10px; }
-.output-prompt-field .output-prompt-generate { font-size: 12px; padding: 9px 12px; min-height: 36px; }
-.output-prompt-field .output-prompt-generate svg { width: 15px; height: 15px; }
-.output-prompt-draft { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--raised); }
-.output-prompt-draft .output-note { margin: 0; }
-.output-prompt-draft details { font-size: 12px; }
-.output-prompt-draft summary { cursor: pointer; }
-.output-prompt-draft dl { display: grid; gap: 8px; }
-.output-prompt-draft dt { font-weight: 600; text-transform: capitalize; }
-.output-prompt-draft dd { margin: 2px 0 0; }
+.output-prompt-input { position: relative; }
+.output-prompt-input textarea { min-height: 116px; padding-bottom: 48px; }
+.output-prompt-optimize { position: absolute; right: 9px; bottom: 9px; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); color: var(--text); font: inherit; font-size: 10px; font-weight: 650; }
+.output-prompt-optimize:hover:not(:disabled) { background: var(--panel); }
+.output-prompt-optimize:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.output-prompt-optimize:disabled { color: var(--muted); opacity: .65; }
 .output-frame-sources { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .output-frame-sources figure { margin: 0; min-width: 0; }
 .output-frame-sources img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); }

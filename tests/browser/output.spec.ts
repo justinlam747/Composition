@@ -24,7 +24,7 @@ test('Output leaves the editor, gates the steps, and preserves the scene and fra
   await expect(page.getByRole('main', { name: 'Output workflow' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Objects', exact: true })).toBeHidden();
   await expect(page.getByRole('button', { name: 'Continue to video direction' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '2 Direction' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Direction', exact: true })).toBeDisabled();
   const before = await scene(page);
   await page.keyboard.press('k'); await page.keyboard.press('Delete'); await page.keyboard.press('Space');
   expect(await scene(page)).toEqual(before);
@@ -101,7 +101,7 @@ test('too many references cannot bypass video direction through the step navigat
   await page.getByRole('textbox', { name: 'Video instructions' }).fill('Natural light');
   await expect(page.getByText('Remove reference images to use nine or fewer', { exact: false })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue to generation' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '3 Generate' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
 });
 
 test('generates and downloads images in output, selects video references, and keeps them across preview exports', async ({ page }) => {
@@ -226,7 +226,7 @@ test('uploads and removes input images, preserving deletion across reload', asyn
   await expect(page.locator('.output-image-grid figure')).toHaveCount(0);
 });
 
-test('drafts, edits and regenerates prompts for both fields without silently applying them', async ({ page }) => {
+test('optimizes and reoptimizes prompts directly in both fields', async ({ page }) => {
   await openOutput(page); await createPreview(page);
   await page.getByRole('checkbox', { name: /reviewed this composition/ }).check();
   await page.getByRole('button', { name: 'Continue to video direction' }).click();
@@ -234,21 +234,17 @@ test('drafts, edits and regenerates prompts for both fields without silently app
   await direction.fill('Toy hero in a subway');
   const requests: { prompt: string; previous?: string }[] = [];
   page.on('request', request => { if (request.url().endsWith('/api/output-prompts')) requests.push(request.postDataJSON()); });
-  await page.getByRole('button', { name: 'Generate video direction prompt' }).click();
-  const draft = page.getByRole('region', { name: 'Suggested video direction prompt' });
-  await expect(draft).toBeVisible(); await expect(direction).toHaveValue('Toy hero in a subway');
-  await draft.getByRole('button', { name: 'Regenerate prompt' }).click();
-  await expect(draft.getByRole('button', { name: 'Use prompt' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Optimize video direction prompt' }).click();
+  await expect(direction).toHaveValue(/Toy hero in a subway.*soft light/);
+  await expect(page.getByRole('button', { name: 'Reoptimize video direction prompt' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Reoptimize video direction prompt' }).click();
   expect(requests[1]).toMatchObject({ prompt: 'Toy hero in a subway', previous: expect.stringContaining('soft light') });
-  await draft.getByRole('textbox').fill('My edited cinematic direction');
-  await draft.getByRole('button', { name: 'Use prompt' }).click();
+  await direction.fill('My edited cinematic direction');
   await expect(direction).toHaveValue('My edited cinematic direction');
   await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('Handmade clay');
-  await page.getByRole('button', { name: 'Generate visual baseline prompt' }).click();
-  const baseline = page.getByRole('region', { name: 'Suggested visual baseline prompt' });
-  await expect(baseline).toBeVisible();
-  await baseline.getByRole('button', { name: 'Use prompt' }).click();
+  await page.getByRole('button', { name: 'Optimize visual baseline prompt' }).click();
   await expect(page.getByRole('textbox', { name: 'Image prompt', exact: true })).toHaveValue(/Handmade clay.*soft light/);
+  await expect(page.getByRole('button', { name: 'Reoptimize visual baseline prompt' })).toBeEnabled();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results-output/prompts-mobile.png', fullPage: true });
