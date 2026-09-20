@@ -100,7 +100,6 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
 .camera-switch button { min-height: 30px; display: flex; align-items: center; gap: 5px; font-size: 10px; padding: 5px 8px; border-radius: 8px; color: var(--muted); }
 .camera-switch .selected { background: var(--raised); color: var(--text); }
 .shot-frame { position: absolute; z-index: 1; pointer-events: none; left: var(--frame-x); top: var(--frame-y); width: var(--frame-width); height: var(--frame-height); border: 1px solid var(--faint); box-shadow: 0 0 0 100vmax oklch(25% .01 90 / .08); }
-.shot-frame.is-minimized { transform: scale(.72); transform-origin: center; }
 .shot-frame span { position: absolute; left: 8px; bottom: 6px; color: var(--muted); font-size: 9px; font-weight: 500; }
 .camera-frame-toggle { position: absolute; z-index: 3; top: 56px; right: 12px; width: 32px; height: 32px; background: oklch(100% 0 0 / .9); }
 .camera-match { position: absolute; left: 50%; bottom: calc(var(--timeline-overlay-height, 0px) + 76px); transform: translateX(-50%); }

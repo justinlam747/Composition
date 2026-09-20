@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Scene } from 'three';
 import { CAMERA_ID, makeCamera, makeProject, moveKey, parseProject, putKey, sample, validateProject } from '../src/core/project';
 import { sceneSignature } from '../src/core/proposals';
-import { cameraFrame, createShotCamera, SHOT_ASPECT } from '../src/scene/shotCamera';
+import { cameraFrame, cameraPreviewFrame, createShotCamera, MIN_PREVIEW_SCALE, SHOT_ASPECT } from '../src/scene/shotCamera';
 import { editTransformKey } from '../src/core/keyEditing';
 
 describe('saved shot camera', () => {
@@ -60,5 +60,12 @@ describe('saved shot camera', () => {
     expect(frame.width / frame.height).toBeCloseTo(SHOT_ASPECT);
     expect(frame.x).toBeGreaterThan(0); expect(frame.y).toBeGreaterThan(0);
     expect(frame.x + frame.width).toBeLessThan(width); expect(frame.y + frame.height).toBeLessThan(height);
+  });
+  it('scales only the centered editor preview and clamps its useful range', () => {
+    const full = cameraFrame(1440, 900), half = cameraPreviewFrame(1440, 900, .5);
+    expect(half.width).toBeCloseTo(full.width / 2); expect(half.height / half.width).toBeCloseTo(1 / SHOT_ASPECT);
+    expect(half.x + half.width / 2).toBe(720); expect(half.y + half.height / 2).toBe(450);
+    expect(cameraPreviewFrame(1440, 900, 2)).toEqual(full);
+    expect(cameraPreviewFrame(1440, 900, 0).width).toBeCloseTo(full.width * MIN_PREVIEW_SCALE);
   });
 });

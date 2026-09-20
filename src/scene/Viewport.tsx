@@ -15,7 +15,7 @@ import { registerGuideExporter, recordCanvas } from './guideExport';
 import { gizmoSizeForPart } from './gizmoSize';
 import { ARExperience, initialARState } from './arExperience';
 import ARControls from '../components/ARControls';
-import { cameraFrame, createShotCamera } from './shotCamera';
+import { cameraPreviewFrame, createShotCamera, MIN_PREVIEW_SCALE } from './shotCamera';
 import { changeCameraView, registerCameraNavigation } from './cameraNavigation';
 import { phoneCamera } from './phoneCamera';
 import { createWebLine } from './webLine';
@@ -33,7 +33,8 @@ export default function Viewport({ active = true }: { active?: boolean }) {
   const [mirrored, setMirrored] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [frameMinimized, setFrameMinimized] = useState(false);
+  const [frameScale, setFrameScale] = useState(1);
+  const resizeCameraPreview = useRef<(scale: number) => void>(() => {});
   const state = useStudio();
   useEffect(() => {
     const container = host.current!;
@@ -253,12 +254,31 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     renderer.domElement.addEventListener('pointerup', pointerUp);
     renderer.domElement.addEventListener('pointercancel', blur);
     window.addEventListener('keydown', keyDown); window.addEventListener('keyup', keyUp); window.addEventListener('blur', blur); document.addEventListener('visibilitychange', visibility);
+    let previewScale = 1;
+    function updateCameraFrame(width: number, height: number) {
+      const frame = cameraPreviewFrame(width, height, previewScale);
+      for (const [name, value] of Object.entries(frame)) container.style.setProperty(`--frame-${name}`, `${value}px`);
+    }
+    function setPreviewScale(scale: number) {
+      const next = Math.max(MIN_PREVIEW_SCALE, Math.min(1, scale));
+      if (Math.abs(next - previewScale) < .001) return;
+      previewScale = next; setFrameScale(next);
+      const { width, height } = container.getBoundingClientRect();
+      if (width && height) updateCameraFrame(width, height);
+    }
+    resizeCameraPreview.current = setPreviewScale;
+    function wheel(event: WheelEvent) {
+      const current = studio.get();
+      if (current.camera !== 'shot' || current.phoneControl || current.exporting || current.preview) return;
+      event.preventDefault();
+      setPreviewScale(previewScale * Math.exp(-event.deltaY * .0015));
+    }
+    renderer.domElement.addEventListener('wheel', wheel, { passive: false });
     function resizeViewport() {
       const { width, height } = container.getBoundingClientRect();
       if (!width || !height || renderer.xr.isPresenting) return;
       camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height);
-      const frame = cameraFrame(width, height);
-      for (const [name, value] of Object.entries(frame)) container.style.setProperty(`--frame-${name}`, `${value}px`);
+      updateCameraFrame(width, height);
     }
     const resize = new ResizeObserver(resizeViewport); resize.observe(container);
     renderer.xr.addEventListener('sessionend', resizeViewport);
@@ -324,7 +344,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
         savePilot();
       }
       if (inShot) {
-        const width = container.clientWidth, height = container.clientHeight, frame = cameraFrame(width, height);
+        const width = container.clientWidth, height = container.clientHeight, frame = cameraPreviewFrame(width, height, previewScale);
         renderer.setViewport(0, 0, width, height); renderer.setScissorTest(false); renderer.clear();
         renderer.setViewport(frame.x, height - frame.y - frame.height, frame.width, frame.height);
         renderer.setScissor(frame.x, height - frame.y - frame.height, frame.width, frame.height); renderer.setScissorTest(true);
@@ -384,6 +404,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       disposed = true; blur(); unregisterNavigation(); unregisterExport(); unregisterDirector(); directorRenderer?.dispose(); placement.geometry.dispose(); placement.material.dispose(); renderer.setAnimationLoop(null); resize.disconnect(); renderer.xr.removeEventListener('sessionend', resizeViewport); shot.dispose(); webLine.dispose();
       void arExperience.dispose().finally(() => renderer.dispose()); experience.current = null;
       renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('pointercancel', blur);
+      renderer.domElement.removeEventListener('wheel', wheel);
       window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', blur); document.removeEventListener('visibilitychange', visibility);
       if (dragging) studio.end(); transform.dispose(); orbit.dispose(); model?.dispose(); props.forEach(p => p.dispose()); grid.geometry.dispose();
       (Array.isArray(grid.material) ? grid.material : [grid.material]).forEach(m => m.dispose()); groundGeometry.dispose(); groundMaterial.dispose(); keyLight.shadow.map?.dispose(); renderer.domElement.remove();
@@ -391,8 +412,8 @@ export default function Viewport({ active = true }: { active?: boolean }) {
   }, []);
   return <section className={`viewport${state.camera === 'camera' ? ' camera-active' : ''}${state.camera === 'shot' ? ' shot-active' : ''}`} aria-label="Scene editor" aria-busy={loading && !error}>
     <video ref={video} className={`camera-feed${mirrored ? ' mirrored' : ''}`} aria-label="Live camera preview" muted playsInline autoPlay hidden={ar.mode !== 'camera' || ar.phase !== 'live'} />
-    <div ref={host} className="canvas-host"><div className={`shot-frame${frameMinimized ? ' is-minimized' : ''}`} hidden={state.camera !== 'shot'} aria-label="Camera frame"><span>Camera · 16:9</span></div></div>
-    {state.camera === 'shot' && <button className="camera-frame-toggle icon-button" title={frameMinimized ? 'Show camera overlay' : 'Minimize camera overlay'} aria-label={frameMinimized ? 'Show camera overlay' : 'Minimize camera overlay'} aria-pressed={frameMinimized} onClick={() => setFrameMinimized(value => !value)}>{frameMinimized ? <Maximize2 size={18} /> : <Minimize2 size={18} />}</button>}
+    <div ref={host} className="canvas-host"><div className="shot-frame" hidden={state.camera !== 'shot'} aria-label="Camera frame"><span>Camera · 16:9 · {Math.round(frameScale * 100)}%</span></div></div>
+    {state.camera === 'shot' && <button className="camera-frame-toggle icon-button" title={frameScale < 1 ? 'Reset camera preview size' : 'Shrink camera preview'} aria-label={frameScale < 1 ? 'Reset camera preview size' : 'Shrink camera preview'} aria-pressed={frameScale < 1} onClick={() => resizeCameraPreview.current(frameScale < 1 ? 1 : .72)}>{frameScale < 1 ? <Maximize2 size={18} /> : <Minimize2 size={18} />}</button>}
     {error && <div className="viewport-error" role="alert">{error}</div>}
     {state.directorPicking && <div className="director-placement-hint" role="status">Click the floor to place your marker <button onClick={() => studio.patch({ directorPicking: false })}>Cancel</button></div>}
     <div className="viewport-top">{state.camera !== 'shot' && <button className="frame-button icon-button" title="Frame selection (F)" aria-label="Frame character" onClick={() => studio.patch({ frameRequest: state.frameRequest + 1 })}><Focus size={19} /></button>}</div>
@@ -404,7 +425,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     {!state.project.objects.some(o => !o.hidden) && <div className="empty-scene"><Box size={30} /><h2>Add a character</h2><button className="button primary" onClick={studio.add}>Add sample mannequin</button></div>}
     {arOpen && state.camera !== 'ar' && <ARControls state={ar} experience={experience.current} mirrored={mirrored} onMirror={() => setMirrored(value => !value)} onClose={() => setAROpen(false)} />}
     {state.objectId === CAMERA_ID && state.selectionActive && state.camera === 'orbit' && <button className="button secondary camera-match" onClick={() => matchCamera.current()}>Set camera from this view</button>}
-    <div className="viewport-bottom"><div className="camera-switch"><button title="Drag to orbit; scroll to zoom" className={state.camera === 'orbit' ? 'selected' : ''} onClick={() => changeCameraView('orbit')}><MousePointer2 size={15} /> Orbit</button><button title="Drag to aim; WASD to move; Q/E up and down. Edits key at the playhead." className={state.camera === 'shot' ? 'selected' : ''} disabled={loading || !!error || !!state.preview} onClick={() => changeCameraView('shot')}><Camera size={15} /> Camera view</button><button className={arOpen || ar.mode !== 'idle' ? 'selected' : ''} aria-expanded={arOpen} disabled={loading || !!error || !!state.preview} onClick={() => { setAROpen(open => !open); studio.patch({ selectionActive: false }); }}><Scan size={15} /> AR</button></div></div>
+    <div className="viewport-bottom"><div className="camera-switch"><button title="Drag to orbit; scroll to zoom" className={state.camera === 'orbit' ? 'selected' : ''} onClick={() => changeCameraView('orbit')}><MousePointer2 size={15} /> Orbit</button><button title="Drag to aim; scroll to resize preview; WASD to move; Q/E up and down. Edits key at the playhead." className={state.camera === 'shot' ? 'selected' : ''} disabled={loading || !!error || !!state.preview} onClick={() => changeCameraView('shot')}><Camera size={15} /> Camera view</button><button className={arOpen || ar.mode !== 'idle' ? 'selected' : ''} aria-expanded={arOpen} disabled={loading || !!error || !!state.preview} onClick={() => { setAROpen(open => !open); studio.patch({ selectionActive: false }); }}><Scan size={15} /> AR</button></div></div>
     {createPortal(<div ref={xrOverlay} className={`xr-overlay${state.camera === 'ar' ? ' is-active' : ''}`}>
       <div className="xr-instructions" role="status"><strong>Place your scene</strong><span>{ar.phase === 'starting' ? 'Starting room placement…' : ar.message}</span></div>
       <div className="xr-actions">

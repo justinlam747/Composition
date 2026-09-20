@@ -65,6 +65,21 @@ test('mobile camera gate has the same aspect and stays within the viewport', asy
   await page.screenshot({ path: 'test-results/shot-camera-mobile.png', fullPage: true });
 });
 
+test('scroll resizes the camera preview without changing the saved composition', async ({ page }) => {
+  await ready(page);
+  await page.locator('.camera-switch').getByRole('button', { name: 'Camera view', exact: true }).click();
+  const frame = page.getByLabel('Camera frame', { exact: true }), canvas = page.getByLabel('Interactive 3D character viewport');
+  const initialBounds = (await frame.boundingBox())!, initialProject = (await cameraState(page)).project;
+  await canvas.hover(); await page.mouse.wheel(0, 600);
+  await expect.poll(async () => (await frame.boundingBox())!.width).toBeLessThan(initialBounds.width * .7);
+  const smallerBounds = (await frame.boundingBox())!;
+  expect(smallerBounds.width / smallerBounds.height).toBeCloseTo(16 / 9, 1);
+  expect((await cameraState(page)).project).toEqual(initialProject);
+  await page.getByRole('button', { name: 'Reset camera preview size', exact: true }).click();
+  await expect.poll(async () => (await frame.boundingBox())!.width).toBeCloseTo(initialBounds.width, 0);
+  expect((await cameraState(page)).project).toEqual(initialProject);
+});
+
 test('camera-only projects retain a valid timeline selection through import and reload', async ({ page }) => {
   await ready(page);
   await page.evaluate(async () => {
