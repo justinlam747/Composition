@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeProject, validateProject } from '../src/core/project';
 import { sceneSignature, videoReferences } from '../src/core/proposals';
-import { excludeVideoReference, removeOutputImage } from '../src/core/outputImages';
+import { excludeVideoReference, imageGenerationReferences, removeOutputImage } from '../src/core/outputImages';
 
 function project() {
   const p = makeProject(); p.objects[0].referenceAssetIds = ['object-image'];
@@ -43,5 +43,17 @@ describe('output reference selection', () => {
     p.generation = excludeVideoReference(p, 'object-image');
     expect(videoReferences(p)).not.toContain('object-image');
     expect(p.objects[0].referenceAssetIds).toEqual(['object-image']); validateProject(p);
+  });
+  it('uses uploads independently of video selection and supports legacy uploaded references', () => {
+    const p = project(); expect(imageGenerationReferences(p.generation)).toEqual(['uploaded']);
+    p.generation!.uploadedImageAssetIds = ['uploaded']; p.generation!.referenceAssetIds = [];
+    expect(imageGenerationReferences(p.generation)).toEqual(['uploaded']);
+    p.generation = removeOutputImage(p.generation!, 'uploaded');
+    expect(imageGenerationReferences(p.generation)).toEqual([]); validateProject(p);
+  });
+  it('accepts large galleries and frame metadata without the old image/pair limits', () => {
+    const p = project(), ids = Array.from({ length: 80 }, (_, i) => `image-${i}`);
+    p.generation = { ...p.generation!, baselineAssetId: undefined, imageAssetIds: ids, uploadedImageAssetIds: ids.slice(40), imageSources: Object.fromEntries(ids.slice(0, 40).map(id => [id, 'guide'])), imagePairs: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [ids[i * 2], ids[i * 2 + 1]])), dismissedImageAssetIds: ids };
+    validateProject(p); expect(imageGenerationReferences(p.generation)).toHaveLength(40);
   });
 });

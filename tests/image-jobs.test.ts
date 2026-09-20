@@ -99,7 +99,8 @@ describe('output image generation (provider mocked)', () => {
     const end = await context.store.asset(Buffer.concat([referencePng, Buffer.from('ending pose')]), 'image/png', 'reference');
     const guide = await context.store.requireAsset(input.guideAssetId);
     await context.store.put('assets', guide.id, { ...guide, lastFrameAssetId: end.id });
-    const pairedInput = { ...input, count: 1 as const, paired: true };
+    const uploaded = await context.store.asset(Buffer.concat([referencePng, Buffer.from('uploaded appearance')]), 'image/png', 'reference');
+    const pairedInput = { ...input, count: 1, paired: true, referenceAssetIds: [uploaded.id] };
     project.generation!.imageRequest = pairedInput;
     await request(context.app).put(`/api/projects/${project.id}`).send(project).expect(200);
     image.mockImplementation(() => context.store.asset(Buffer.concat([referencePng, Buffer.from([image.mock.calls.length])]), 'image/png', 'reference'));
@@ -107,12 +108,14 @@ describe('output image generation (provider mocked)', () => {
     const job = await completed(input.id), [first, last] = job.assetIds!;
     expect(job.assetIds).toHaveLength(2); expect(job.imagePairs).toEqual({ [first]: last });
     expect(image.mock.calls[0][1]).toBe(frame.id);
-    expect(image.mock.calls[1].slice(1)).toEqual([end.id, first]);
+    expect(image.mock.calls[0][3]).toEqual([uploaded.id]);
+    expect(image.mock.calls[1].slice(1)).toEqual([end.id, first, [uploaded.id]]);
     expect(image.mock.calls[1][0]).toContain(input.prompt);
     expect(image.mock.calls[1][0]).toContain('do not copy its starting pose');
     await request(context.app).post('/api/image-jobs').send(pairedInput).expect(202);
     expect(image).toHaveBeenCalledTimes(2);
     await request(context.app).post('/api/image-jobs').send({ ...pairedInput, paired: false }).expect(409);
+    await request(context.app).post('/api/image-jobs').send({ ...pairedInput, referenceAssetIds: [] }).expect(409);
     project.generation = { ...project.generation!, imageAssetIds: job.assetIds, imageSources: { [first]: guide.id, [last]: guide.id }, imagePairs: job.imagePairs, baselineAssetId: first };
     const result = await request(context.app).post('/api/jobs').send({ id: uid(), project, prompt: 'Follow the guide', mode: 'live' }).expect(202);
     expect(result.body.referenceAssetIds).toEqual([first, last]); expect(result.body.lastBaselineAssetId).toBe(last);
@@ -157,17 +160,30 @@ describe('output image generation (provider mocked)', () => {
     await new ImageJobs(context.store, mockProviders(context.store)).recover();
     expect(await context.store.get<ImageJob>('image-jobs', input.id)).toMatchObject({ status: 'failed', assetIds: job.assetIds });
   });
-  it('rejects stale first-frame input and oversized batches before making provider calls', async () => {
+  it('rejects stale frames before spending and allows galleries and requests beyond the former caps', async () => {
     const { project, input, frame } = await framed();
     await request(context.app).post('/api/image-jobs').send({ ...input, count: 2 }).expect(400);
     await request(context.app).post('/api/image-jobs').send({ ...input, guideAssetId: 'different' }).expect(400);
     project.objects[0].position[0] += 1;
     await request(context.app).put(`/api/projects/${project.id}`).send(project).expect(200);
     expect((await request(context.app).post('/api/image-jobs').send(input).expect(400)).body.error.code).toBe('STALE_GUIDE');
+    expect(image).not.toHaveBeenCalled();
     project.generation!.sourceSignature = sceneSignature(project);
-    project.generation!.imageAssetIds = Array(23).fill(frame.id);
+    project.generation!.imageAssetIds = Array(40).fill(frame.id);
+    project.generation!.imageRequest = { ...project.generation!.imageRequest!, count: 4 };
     await request(context.app).put(`/api/projects/${project.id}`).send(project).expect(200);
-    expect((await request(context.app).post('/api/image-jobs').send(input).expect(400)).body.error.code).toBe('IMAGE_LIMIT');
+    await request(context.app).post('/api/image-jobs').send({ ...input, count: 4 }).expect(202);
+    await completed(input.id);
+    expect(image).toHaveBeenCalledTimes(4);
+    expect(image.mock.calls.every(([prompt]) => !prompt.includes('undefined'))).toBe(true);
+  });
+  it('validates reference identity and image roles before dispatching a paid generation', async () => {
+    const { project, input } = await prepared();
+    await request(context.app).post('/api/image-jobs').send({ ...input, referenceAssetIds: ['different'] }).expect(400);
+    const invalid = { ...input, referenceAssetIds: [project.generation!.guideAssetId] };
+    project.generation!.imageRequest = invalid;
+    await request(context.app).put(`/api/projects/${project.id}`).send(project).expect(200);
+    expect((await request(context.app).post('/api/image-jobs').send(invalid).expect(400)).body.error.code).toBe('ASSET_ROLE');
     expect(image).not.toHaveBeenCalled();
   });
 });

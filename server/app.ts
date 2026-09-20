@@ -86,7 +86,7 @@ export async function createApp(options: { dataDir?: string; providers?: (store:
   });
   app.get('/api/jobs/:id', async (req, res) => res.json(await jobs.refresh(req.params.id)));
   app.post('/api/image-jobs', async (req, res) => {
-    const { projectId, ...input } = z.object({ id: z.string().refine(validId), projectId: z.string().refine(validId), prompt: z.string().trim().min(1).max(4000), guideAssetId: z.string().refine(validId).optional(), count: z.union([z.literal(1), z.literal(3)]).optional(), paired: z.boolean().optional() }).strict().parse(req.body);
+    const { projectId, ...input } = z.object({ id: z.string().refine(validId), projectId: z.string().refine(validId), prompt: z.string().trim().min(1).max(4000), guideAssetId: z.string().refine(validId).optional(), count: z.number().int().positive().optional(), paired: z.boolean().optional(), referenceAssetIds: z.array(z.string().refine(validId)).optional() }).strict().parse(req.body);
     res.status(202).json(await imageJobs.create(projectId, input));
   });
   app.get('/api/image-jobs/:id', async (req, res) => res.json(await store.get<ImageJob>('image-jobs', req.params.id)));

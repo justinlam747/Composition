@@ -7,12 +7,13 @@ import { AppError, FileStore, type StoredJob } from './storage';
 import { downloadOutput, imageMime } from './media';
 import type { Asset } from '../src/core/api';
 import { refineOutputPrompt } from './promptRefinement';
+import { referenceImage } from './imageInputs';
 import type { PromptTarget, RefinedPrompt } from '../src/core/outputPrompts';
 
 export interface Providers {
   configured: { gemini: boolean; fal: boolean; hunyuanMotion: boolean };
   model: string;
-  image(prompt: string, sourceAssetId?: string, styleAssetId?: string): Promise<Asset>;
+  image(prompt: string, sourceAssetId?: string, styleAssetId?: string, referenceAssetIds?: string[]): Promise<Asset>;
   refinePrompt(project: Project, target: PromptTarget, prompt: string, previous?: string): Promise<RefinedPrompt>;
   propose(project: Project, kind: ProposalKind, prompt: string, objectId: string): Promise<Proposal>;
   motion(prompt: string, duration: number, seed?: number): Promise<Buffer>;
@@ -23,26 +24,25 @@ export function liveProviders(store: FileStore): Providers {
   const geminiKey = process.env.GEMINI_API_KEY, falKey = process.env.FAL_KEY;
   const model = process.env.SEEDANCE_MODEL || 'bytedance/seedance-2.0/reference-to-video';
   const fal = createFalClient({ credentials: falKey, retry: { maxRetries: 0 }, fetch: (input, init) => fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000) }) });
-  async function gemini(prompt: string, kind: ProposalKind | 'image', source?: { data: string; mimeType: string }, style?: { data: string; mimeType: string }): Promise<{ text: string; image?: { data: string; mimeType: string } }> {
+  async function gemini(prompt: string, kind: ProposalKind | 'image', source?: { data: string; mimeType: string }, style?: { data: string; mimeType: string }, references: { data: string; mimeType: string }[] = []): Promise<{ text: string; image?: { data: string; mimeType: string } }> {
     const image = kind === 'image';
     if (!geminiKey) throw new AppError(503, 'GEMINI_NOT_CONFIGURED', 'Live AI is unavailable: configure GEMINI_API_KEY on the server.');
     const selectedModel = image ? process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' : process.env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash';
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent`, {
       method: 'POST', signal: AbortSignal.timeout(150_000), headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }, ...(source ? [{ inlineData: source }] : []), ...(style ? [{ inlineData: style }] : [])] }], generationConfig: image ? { responseModalities: ['TEXT', 'IMAGE'], ...(source ? { imageConfig: { aspectRatio: '16:9' } } : {}) } : { responseMimeType: 'application/json', responseJsonSchema: z.toJSONSchema(proposalContentSchema.options.find(schema => schema.shape.kind.value === kind)!), temperature: .4 } }),
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }, ...(source ? [{ inlineData: source }] : []), ...(style ? [{ inlineData: style }] : []), ...references.map(inlineData => ({ inlineData }))] }], generationConfig: image ? { responseModalities: ['TEXT', 'IMAGE'], ...(source ? { imageConfig: { aspectRatio: '16:9' } } : {}) } : { responseMimeType: 'application/json', responseJsonSchema: z.toJSONSchema(proposalContentSchema.options.find(schema => schema.shape.kind.value === kind)!), temperature: .4 } }),
     });
-    if (!response.ok) throw new AppError(502, 'GEMINI_REQUEST_FAILED', `Gemini rejected the live request (HTTP ${response.status}). Check the server key, model access and quota.`);
+    if (!response.ok) throw new AppError(502, 'GEMINI_REQUEST_FAILED', `Gemini rejected the live request (HTTP ${response.status}). Check ${image ? 'the model reference-image and request-size limits, ' : ''}the server key, model access and quota.`);
     const data = await response.json() as { candidates?: { finishReason?: string; content?: { parts?: { text?: string; thought?: boolean; inlineData?: { data: string; mimeType: string } }[] } }[] };
     const candidate = data.candidates?.[0];
     if (!candidate?.content?.parts || candidate.finishReason && candidate.finishReason !== 'STOP') throw new AppError(502, 'GEMINI_NO_RESULT', 'Gemini returned no complete suggestion. Try a different prompt.');
     return { text: candidate.content.parts.filter(p => !p.thought).map(p => p.text ?? '').join(''), image: candidate.content.parts.find(p => p.inlineData && !p.thought)?.inlineData };
   }
-  async function generateImage(prompt: string, sourceAssetId?: string, styleAssetId?: string) {
-    const asset = sourceAssetId ? await store.requireAsset(sourceAssetId, 'reference') : undefined;
-    const source = asset ? { mimeType: asset.mimeType, data: (await readFile(store.file('assets', asset.id, 'bin'))).toString('base64') } : undefined;
-    const styleAsset = styleAssetId ? await store.requireAsset(styleAssetId, 'reference') : undefined;
-    const style = styleAsset ? { mimeType: styleAsset.mimeType, data: (await readFile(store.file('assets', styleAsset.id, 'bin'))).toString('base64') } : undefined;
-    const result = await gemini(prompt, 'image', source, style);
+  async function generateImage(prompt: string, sourceAssetId?: string, styleAssetId?: string, referenceAssetIds?: string[]) {
+    const source = sourceAssetId ? await referenceImage(store, sourceAssetId) : undefined;
+    const style = styleAssetId ? await referenceImage(store, styleAssetId) : undefined;
+    const references = await Promise.all([...new Set(referenceAssetIds ?? [])].filter(id => id !== sourceAssetId && id !== styleAssetId).map(id => referenceImage(store, id)));
+    const result = await gemini(prompt, 'image', source, style, references);
     if (!result.image) throw new AppError(502, 'NO_REFERENCE_IMAGE', 'Gemini did not return an image. Try a different prompt.');
     const bytes = Buffer.from(result.image.data, 'base64');
     if (bytes.length > 30_000_000) throw new AppError(502, 'IMAGE_TOO_LARGE', 'Gemini returned an image larger than 30 MB.');

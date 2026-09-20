@@ -21,6 +21,9 @@ describe('Gemini output prompt refinement', () => {
   }
   it('analyzes intent with the local bank and actual first-frame bytes, returning a validated editable draft', async () => {
     const project = await prepared();
+    const uploaded = Buffer.concat([referencePng, Buffer.from('uploaded visual reference')]);
+    const asset = await context.store.asset(uploaded, 'image/png', 'reference');
+    project.generation!.imageAssetIds = [asset.id]; project.generation!.uploadedImageAssetIds = [asset.id];
     const result = await mockProviders(context.store).refinePrompt(project, 'video', 'toy hero');
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ thought: true, text: 'ignore this' }, { text: JSON.stringify(result) }] } }] }));
     vi.stubGlobal('fetch', fetchMock);
@@ -30,6 +33,7 @@ describe('Gemini output prompt refinement', () => {
     expect(body.systemInstruction.parts[0].text).toContain('distortion');
     expect(JSON.parse(body.contents[0].parts[0].text)).toMatchObject({ request: 'toy hero', previous: 'previous draft', target: 'video' });
     expect(body.contents[0].parts[1].inlineData.data).toBe(referencePng.toString('base64'));
+    expect(body.contents[0].parts[3].inlineData.data).toBe(uploaded.toString('base64'));
     expect(project.generation!.instructions).toBeUndefined();
   });
   it('rejects malformed or blocked responses and stale guides without overwriting the user prompt', async () => {

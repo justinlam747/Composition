@@ -4,14 +4,15 @@ import { api } from '../core/api';
 import type { PromptTarget } from '../core/outputPrompts';
 import { studio, useStudio } from '../core/store';
 
-export default function OutputPromptField({ target, title, value, onChange, configured, disabled, context = '', children }: {
+export default function OutputPromptField({ target, title, value, onChange, configured, disabled, context = '', children, onBusyChange }: {
   target: PromptTarget; title: ReactNode; value: string; onChange: (value: string) => void;
-  configured: boolean; disabled: boolean; context?: string; children?: ReactNode;
+  configured: boolean; disabled: boolean; context?: string; children?: ReactNode; onBusyChange?: (busy: boolean) => void;
 }) {
   const s = useStudio(), [optimizedPrompt, setOptimizedPrompt] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const request = useRef<AbortController | null>(null);
   const original = useRef('');
   const name = target === 'video' ? 'video direction' : 'visual baseline';
+  useEffect(() => { onBusyChange?.(busy); return () => onBusyChange?.(false); }, [busy, onBusyChange]);
   useEffect(() => {
     request.current?.abort(); request.current = null; setBusy(false); setOptimizedPrompt(''); setError('');
     return () => { request.current?.abort(); request.current = null; };

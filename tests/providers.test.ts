@@ -92,11 +92,13 @@ describe('live provider request contracts (transport mocked, no paid calls)', ()
     const end = await store.asset(referencePng, 'image/png', 'reference');
     const lookBytes = Buffer.concat([referencePng, Buffer.from('look')]);
     const look = await store.asset(lookBytes, 'image/png', 'reference');
+    const uploadedBytes = Array.from({ length: 5 }, (_, i) => Buffer.concat([referencePng, Buffer.from(`upload-${i}`)]));
+    const uploads = await Promise.all(uploadedBytes.map(bytes => store.asset(bytes, 'image/png', 'reference')));
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: referencePng.toString('base64') } }] } }] }));
     vi.stubGlobal('fetch', fetchMock);
-    await liveProviders(store).image('Same look, ending pose', end.id, look.id);
+    await liveProviders(store).image('Same look, ending pose', end.id, look.id, [...uploads.map(asset => asset.id), uploads[0].id]);
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.contents[0].parts.slice(1).map((part: { inlineData: { data: string } }) => part.inlineData.data)).toEqual([referencePng.toString('base64'), lookBytes.toString('base64')]);
+    expect(body.contents[0].parts.slice(1).map((part: { inlineData: { data: string } }) => part.inlineData.data)).toEqual([referencePng.toString('base64'), lookBytes.toString('base64'), ...uploadedBytes.map(bytes => bytes.toString('base64'))]);
   });
   it('labels the selected ending frame separately from supporting images in video requests', async () => {
     const guide = await store.asset(Buffer.from('guide'), 'video/mp4', 'guide');

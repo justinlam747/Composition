@@ -95,3 +95,7 @@ No `CLAUDE.md` was found in the workspace or its ancestors during this review, s
 - Keep the original short request, editable AI draft and applied prompt distinct. Regeneration should send the original request plus the previous draft, and applying a draft should be an explicit action. Invalidate pending drafts when their project or guide changes. See `src/components/OutputPromptField.tsx` and `tests/browser/output.spec.ts`.
 
 No `CLAUDE.md` was found in the workspace or its ancestors during this review, so no agent-rule file was created or changed.
+
+## Uploaded references across generation stages - 2026-09-19
+
+- Keep the uploaded-image inventory separate from the provider-limited video selection. Prompt refinement and image generation must use the same full upload list, even when an upload is excluded from the video request. Persist explicit upload provenance; infer source-free gallery uploads only for older projects without that metadata, so generated results do not become new input references accidentally. See `imageGenerationReferences` in `src/core/outputImages.ts`, `server/promptRefinement.ts`, and `tests/output-inputs.test.ts`.

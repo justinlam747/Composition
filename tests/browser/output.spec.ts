@@ -268,3 +268,41 @@ test('deleted generated frames stay removed after job polling on reload', async 
   await expect(page.locator('.output-image-grid figure')).toHaveCount(1);
   await expect(page.getByRole('checkbox', { name: 'Use for video' })).toBeVisible();
 });
+
+test('generates repeatedly from the optimized prompt and every upload without a count selector or gallery cap', async ({ page }) => {
+  test.setTimeout(90000);
+  await openOutput(page); await createPreview(page);
+  await page.getByRole('checkbox', { name: /reviewed this composition/ }).check();
+  await page.getByRole('button', { name: 'Continue to video direction' }).click();
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j2ioAAAAASUVORK5CYII=', 'base64');
+  await page.getByLabel('Upload reference images').setInputFiles(Array.from({ length: 30 }, (_, i) => ({ name: `reference-${i}.png`, mimeType: 'image/png', buffer: Buffer.concat([png, Buffer.from(String(i))]) })));
+  await expect(page.locator('.output-image-grid figure')).toHaveCount(30, { timeout: 30000 });
+  const generate = page.getByRole('button', { name: 'Generate images', exact: true });
+  const prompt = page.getByRole('textbox', { name: 'Image prompt', exact: true });
+  await prompt.fill('Toy hero in a subway');
+  await expect(generate).toBeEnabled();
+  await expect(page.getByRole('combobox', { name: 'Image options' })).toHaveCount(0);
+  await page.getByRole('checkbox', { name: 'Use for video' }).first().uncheck();
+  const uploadedIds = (await scene(page)).generation.uploadedImageAssetIds;
+  expect(uploadedIds).toHaveLength(30);
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/output-prompts', async route => { await held; await route.continue(); });
+  await page.getByRole('button', { name: 'Optimize visual baseline prompt' }).click();
+  await expect(generate).toBeDisabled();
+  release();
+  await expect(prompt).toHaveValue(/Toy hero in a subway.*soft light/);
+  const optimized = await prompt.inputValue();
+  for (let version = 0; version < 4; version++) {
+    if (version) await prompt.fill(`${optimized} Variation ${version}.`);
+    const expectedPrompt = await prompt.inputValue();
+    const sending = page.waitForRequest(request => request.url().endsWith('/api/image-jobs') && request.method() === 'POST');
+    await generate.click();
+    const input = (await sending).postDataJSON();
+    expect(input.prompt).toBe(expectedPrompt); expect(input.referenceAssetIds).toEqual(uploadedIds);
+    expect(input.count).toBeUndefined(); expect(input.paired).toBe(true);
+    await expect(page.locator('.output-image-grid figure')).toHaveCount(32 + version * 2);
+    await expect(generate).toBeEnabled();
+  }
+  await page.screenshot({ path: 'test-results-output/unlimited-image-inputs.png', fullPage: true });
+});
