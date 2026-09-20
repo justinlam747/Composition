@@ -33,9 +33,9 @@ The most useful features were the ones that made the development process repeata
 
 ## Challenges we ran into
 
-Handheld latency required separating tracking from rendering. I kept the scene renderer on desktop, capped phone poses at 30 Hz, and sent 480×270 previews at roughly 6 fps. Backpressure controls prevent preview queues from accumulating.
+Handheld mode was initially too slow because camera tracking and video previews competed for the same connection. I separated them: the phone streams motion at up to 30 fps, while the desktop sends back a lightweight preview at roughly 6 fps and drops old frames when the connection falls behind.
 
-Gemini also needed a reliable execution contract. I compacted Gemini's output schema while keeping strict application-side validation, and used scene signatures to stop stale agent proposals or generation guides from being applied to newer edits.
+Gemini also needed to make safe, predictable edits. I gave it a compact set of typed actions, validated every response, and tied each proposal to the exact scene it was created for. If the scene changes, Composition asks Gemini to refresh the proposal instead of applying an outdated edit.
 
 ## Accomplishments that we're proud of
 
