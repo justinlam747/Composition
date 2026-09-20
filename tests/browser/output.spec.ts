@@ -72,6 +72,24 @@ test('preview and direction survive navigation and reload, while scene edits req
   expect((await scene(page)).generation.instructions).toBe('Soft daylight and natural materials');
 });
 
+test('a saved image request does not block refreshing a stale composition preview', async ({ page }) => {
+  await openOutput(page); await createPreview(page);
+  const previousGuide = (await scene(page)).generation.guideAssetId;
+  await page.evaluate(async () => {
+    const path = '/src/core/store.ts', { studio } = await import(path);
+    const generation = studio.get().project.generation!;
+    studio.generation({ ...generation, imageRequest: { id: 'saved-image-request', prompt: 'Saved image request', guideAssetId: generation.guideAssetId, paired: true, referenceAssetIds: [] } });
+    studio.addBox();
+  });
+  await page.reload();
+  await expect(page.getByText('Your composition has changed.', { exact: false })).toBeVisible();
+  const refresh = page.getByRole('button', { name: 'Create new preview' });
+  await expect(refresh).toBeEnabled();
+  await refresh.click();
+  await expect(page.getByRole('checkbox', { name: 'I’ve reviewed this composition' })).toBeEnabled({ timeout: 30000 });
+  expect((await scene(page)).generation.guideAssetId).not.toBe(previousGuide);
+});
+
 test('failed preview upload is actionable and retry uses real capture without starting a generation', async ({ page }) => {
   let fail = true, submissions = 0;
   await page.route('**/api/assets?role=guide*', route => fail ? route.fulfill({ status: 503, json: { error: { code: 'ENCODER_BUSY', message: 'Encoder is busy. Try again.' } } }) : route.continue());
