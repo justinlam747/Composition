@@ -1,56 +1,74 @@
 # Composition — Devpost story draft
 
-**Tagline:** Agentic videography: film with your phone, direct with your voice, generate from your composition.
+**Tagline:** Gemini-powered filmmaking: direct with your voice, film with your phone, and bring your composition to life.
 
 ## Inspiration
 
-We wanted AI filmmaking to preserve the physical process of finding a shot: moving around a subject, choosing an angle, and directing its performance. Composition makes those decisions editable inputs to video generation.
+I wanted AI filmmaking to preserve the freedom of finding a shot: moving around a subject, choosing an angle, and directing a performance. Composition turns those physical and creative decisions into inputs for generation. Codex made tackling this scope as a solo hacker possible.
 
 ## What it does
 
-Composition combines a Three.js scene editor, phone-controlled camera capture, and a live voice director. Users place objects, direct character animation, and record camera movement. Reusable animation blocks preserve the authored motion; the composed scene becomes a guide for generated imagery and video.
+Composition is an agentic videography tool. Gemini Live provides conversational direction, Gemini plans scene edits, and a connected phone controls the virtual camera. Users save movement in reusable animation blocks, generate a visual treatment with Gemini, and use the composition to guide video generation.
 
 ## How we built it
 
-**1. Stage and direct the scene.** Users arrange objects manually or through Gemini Live. The director receives structured scene state and a viewport image, then proposes typed placement, camera, and animation actions. Zod validation, approval, and scene-signature checks precede application. Hunyuan generates humanoid performances asynchronously, which become editable animation tracks.
+**The filmmaking pipeline**
 
-**2. Capture the camera movement.** An ARKit companion sends position and quaternion orientation through a Node WebSocket relay. The editor receives pose events over SSE and returns rendered JPEG previews. A rigid alignment transform anchors physical movement to the starting virtual camera. Recorded poses are resampled at 30 fps with linear position interpolation, quaternion SLERP, and rotation unwrapping.
+1. **Direct with Gemini.** Gemini receives scene state and a viewport image, returning typed actions for objects, cameras, and animation. Gemini Live calls this workflow through voice; Hunyuan supplies generated character motion. Changes are validated and approved before application.
+2. **Film and preserve movement.** ARKit sends phone position and orientation through a WebSocket relay. The Three.js editor maps those poses to the virtual camera and saves interpolated motion as editable timeline blocks. Blocks retain source keyframes when split, retimed, or reused.
+3. **Render the composition.** The saved camera and animation tracks become a clean 720p, 30 fps motion guide. This captures staging, timing, and camera movement independently of the phone's preview stream.
+4. **Develop the look with Gemini.** Gemini refines artistic prompts and generates styled first and last frames. Gemini receives the styled first image when creating the last, providing a shared appearance reference while retaining the ending composition.
+5. **Generate and review.** Seedance receives the motion guide, selected Gemini images, and direction prompt. The guide supplies motion and framing; Gemini images supply appearance. The pipeline saves returned video for review and download. Users can reuse the guide for another visual treatment.
 
-**3. Edit and reuse the take.** Camera, object, and character motion live in timeline blocks. Each block retains its source keyframes and source-time window, so splitting, retiming, and saving it preserve the original motion data. Users can adjust timing and framing before spending on generation.
+**Solo development with Codex**
 
-**4. Render the motion guide.** We snapshot the project and replay its object transforms, joint animation, and camera tracks together through the scene sampler. A clean export hides editor controls and renders from the shot camera at 1280×720. Browser recording and FFmpeg produce a 30 fps MP4 for review. This guide visually carries the staged action, timing, framing, and camera movement into the video model. It is rendered from the saved composition, independently of the low-rate phone preview.
+Codex made the scope manageable for one developer. Local repository access, terminal commands, browser research, MCP tools, and Git diff inspection kept implementation and review in one workspace.
 
-**5. Define appearance without rebuilding the motion.** Users add artistic direction and optional reference images. Optional Gemini prompt refinement uses the composition frame and uploaded references, with instructions to respect the existing movement and timing. For a generated visual baseline, FFmpeg extracts the guide's first and last frames. Gemini renders the first frame in the requested style, then receives both the last composition frame and the styled first image to generate a matching end image. This gives the ending pose its own composition reference and a shared appearance reference.
-
-**6. Assemble the video-model inputs.** After the user selects a baseline pair, Seedance via fal receives the full motion guide as `@Video1`, the styled first and last images as `@Image1` and `@Image2`, any additional selected references, and the video-direction prompt. We explicitly instruct it to follow the guide's animation, staging, and camera framing while taking identity, materials, lighting, and color from the images. The video model receives these visual references; the editable 3D scene and keyframes remain in Composition. They guide generation rather than impose exact geometric constraints on its output.
-
-**7. Generate, review, and iterate.** The server verifies that the guide matches the current scene and that the selected baseline came from that guide. It persists the request before submitting, polls the provider, and stores the returned MP4 for playback and download. Request IDs make retries reuse the same request; fingerprints reject changed inputs under an existing ID. Users can create another visual version from the same motion guide, or revise the composition and export a new one.
+The less visible features mattered: `AGENTS.md` carried project instructions, a reusable skill required verification and commits, and interactive steering let me refine requirements during ongoing work. Codex also helped turn implementation lessons into persistent notes, including preserving rotation paths, rejecting stale proposals, and keeping interrupted generation requests recoverable. I could return to the reasoning behind a fix as the project evolved.
 
 ## Challenges we ran into
 
-Handheld latency was the main architectural tradeoff. We kept rendering in the desktop editor and decoupled tracking from preview delivery: poses are capped at 30 Hz, while 480×270 JPEG previews are capped at roughly 6 fps. Single in-flight sends and dropping previews under socket backpressure limit queue buildup.
+Handheld latency required separating tracking from rendering. I kept the scene renderer on desktop, capped phone poses at 30 Hz, and sent 480×270 previews at roughly 6 fps. Backpressure controls prevent preview queues from accumulating.
 
-Agent execution also had to tolerate a changing scene. Proposals carry a scene signature and revision; if editing makes a result stale, it requires review before application. We also compacted the model-facing JSON schema to fit Gemini's constraints while retaining full application-side validation.
+Gemini also needed a reliable execution contract. I compacted Gemini's output schema while keeping strict application-side validation, and used scene signatures to stop stale agent proposals or generation guides from being applied to newer edits.
 
 ## Accomplishments that we're proud of
 
-- Representing handheld takes, manual animation, and generated motion as editable timeline blocks.
-- Connecting live voice direction to validated scene operations.
-- Separating motion guidance from appearance references in the generation pipeline.
+- Building a solo project spanning spatial editing, phone tracking, voice direction, and media generation with Codex.
+- Using Gemini across conversation, scene planning, prompt refinement, and image generation.
+- Validating a live Gemini object proposal and converting a two-second Hunyuan performance into 19 editable tracks.
+- Preserving authored motion through reusable blocks and a rendered generation guide.
 
 ## What we learned
 
-Separating tracking, preview rendering, and generation lets each run at an appropriate rate. Keeping motion as structured data makes physical capture reusable throughout the workflow.
+Gemini becomes more useful when it operates on explicit scene state and visual context. Codex becomes more useful when work has clear boundaries, reusable instructions, and reviewable results. Those two ideas shaped both Composition and how I built it.
 
 ## What's next for Composition
 
-Measure handheld latency and tracking drift on devices, tune preview delivery across networks, and evaluate how consistently generated video follows the authored camera and character motion.
+My next development pass focuses on:
+
+- **ElevenLabs audio:** generate audio for the finished output and combine it with the video through FFmpeg.
+- **Codex cloud sandboxes:** compare Gemini appearance-conditioning approaches in isolated environments using the same composition.
+- **Parallel agents and worktrees:** separate handheld transport, generation reliability, and UI review into independent tasks and checkouts.
+- **Overnight automations:** schedule rotation, tracking-loss, and export regression checks, then review results in the morning.
+
+## Built with
+
+Gemini, Gemini Live, OpenAI Codex, Three.js, React, TypeScript, Node.js, ARKit, WebSockets, Zod, FFmpeg, Hunyuan Motion, Seedance, fal. Planned audio integration: ElevenLabs.
 
 ---
 
 ## Implementation references — not submission copy
 
 The current repository implements **Seedance via fal**, not Veo. The draft reflects that implementation. Capture rates are code settings; device performance and generative fidelity are not presented as measured results.
+
+The author clarified that ElevenLabs and the proposed cloud/overnight experiments have not yet been completed. They appear as planned work. `AGENTS.md` supplies project instructions; reusable skills are defined separately in `SKILL.md`.
+
+The specific live Gemini proposal and two-second/19-track motion result are recorded in [the Director implementation notes](C:/Users/Justin/comp/plans/gemini-director-integration.md). Those notes distinguish limited smoke checks from full live microphone acceptance. [Implementation lessons](C:/Users/Justin/comp/tasks/lessons.md) distinguish local/browser checks with mocked providers from paid end-to-end video acceptance.
+
+Codex cloud environments create repository-backed containers for execution; this supports the proposed isolation approach. See the [official cloud environment documentation](https://learn.chatgpt.com/docs/environments/cloud-environment). [Subagent workflows](https://learn.chatgpt.com/docs/agent-configuration/subagents) support independent parallel tasks, while [worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees) separate checkouts.
+
+[Scheduled tasks](https://learn.chatgpt.com/docs/automations?surface=app) can run background project work; local runs require the computer and app to remain on. The proposed overnight checks have not been scheduled in this conversation. [Reusable skills](https://learn.chatgpt.com/docs/build-skills) package workflows in `SKILL.md`; the existing [commit-after-change skill](C:/Users/Justin/comp/.agents/skills/commit-after-change/SKILL.md) and [AGENTS.md](C:/Users/Justin/comp/AGENTS.md) provide the concrete project example.
 
 - Handheld transport and preview: [MotionController.swift](C:/Users/Justin/comp/ios/CompositionCamera/MotionController.swift), [phoneRelay.ts](C:/Users/Justin/comp/server/phoneRelay.ts), [phoneCamera.ts](C:/Users/Justin/comp/src/scene/phoneCamera.ts).
 - Alignment, interpolation, and rotation continuity: [phoneMotion.ts](C:/Users/Justin/comp/src/core/phoneMotion.ts).
