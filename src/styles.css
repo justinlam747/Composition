@@ -15,6 +15,7 @@
   --mint: oklch(55% .09 157);
   --red: oklch(58% .17 27);
   --blue: oklch(56% .13 250);
+  --graph-handle: oklch(72% .15 88);
   font-family: var(--font);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -162,7 +163,8 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
 .key-button { color: var(--accent); background: var(--accent-soft); padding: 8px 12px; font-size: 11px; min-height: 35px; }
 .duration-label { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .duration-label select { font-size: 11px; appearance: none; padding: 7px 1px; }
-.timeline-content { position: relative; flex: 1; min-height: 0; overflow-y: auto; }
+.timeline-content { position: relative; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.timeline-content::-webkit-scrollbar { display: none; }
 .timeline-tracks { position: relative; min-height: 100%; }
 .timeline-ruler { display: flex; height: 31px; padding-right: var(--rail-right); }
 .ruler-label { flex: 0 0 var(--label-width); display: flex; align-items: center; padding: 0 20px; font-size: 10px; font-weight: 650; color: var(--muted); border-right: 1px solid var(--line); }
@@ -216,6 +218,33 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
 .velocity-footer .key-options { gap: 10px; }
 .velocity-footer label { display: flex; align-items: center; gap: 5px; }
 .velocity-footer input { width: 54px; padding: 4px; border: 1px solid var(--line); border-radius: 5px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text); }
+.value-property-bar { display: flex; align-items: center; gap: 12px; padding: 2px 12px; border-bottom: 1px solid var(--line); font-size: 10px; min-height: 29px; }
+.value-property-bar select { font-size: 10px; min-width: 0; max-width: 160px; }
+.value-property-bar > span { margin-left: auto; color: var(--muted); white-space: nowrap; }
+.value-axes { display: flex; gap: 2px; }
+.value-axes button { width: 25px; height: 25px; border-radius: 5px; color: var(--muted); }
+.value-axes button[aria-pressed="true"] { color: var(--blue); background: var(--raised); }
+.value-content .timeline-tracks { height: 100%; min-height: 110px; display: flex; flex-direction: column; }
+.value-content .timeline-ruler { flex-shrink: 0; }
+.value-lane { display: flex; flex: 1; min-height: 79px; padding-right: var(--rail-right); }
+.value-scale { position: relative; flex: 0 0 var(--label-width); border-right: 1px solid var(--line); font-size: 9px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.value-scale span { position: absolute; right: 10px; transform: translateY(-50%); }
+.value-rail { position: relative; flex: 1; min-width: 0; touch-action: none; overflow: clip; overflow-clip-margin: 14px; }
+.value-curve { position: absolute; inset: 14px 0; width: 100%; height: calc(100% - 28px); overflow: visible; pointer-events: none; }
+.value-curve polyline { fill: none; stroke: var(--blue); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.value-grid { fill: none; stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.value-handle-line { stroke: var(--graph-handle); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.value-handle-line.is-pending { stroke-dasharray: 3 2; }
+.value-key, .value-handle { position: absolute; z-index: 5; width: 28px; height: 28px; transform: translate(-50%, -50%); display: grid; place-items: center; touch-action: none; }
+.value-key { color: var(--blue); cursor: move; }
+.value-key.is-selected { color: var(--graph-handle); }
+.value-key.is-selected svg { stroke: var(--text); }
+.value-handle { z-index: 6; cursor: ew-resize; }
+.value-handle span { width: 8px; height: 8px; border-radius: 50%; background: var(--graph-handle); border: 1px solid var(--panel); }
+.value-handle.is-pending span { background: var(--panel); border-color: var(--graph-handle); }
+.value-key:focus-visible, .value-handle:focus-visible { outline: 2px solid var(--graph-handle); border-radius: 5px; }
+.value-footer label { display: flex; align-items: center; gap: 5px; }
+.value-footer input { width: 58px; padding: 4px; border: 1px solid var(--line); border-radius: 5px; font-size: 11px; font-variant-numeric: tabular-nums; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 25; display: grid; place-items: center; padding: 20px; background: oklch(25% .01 90 / .27); }
 .modal { position: relative; width: min(450px, 100%); padding: 32px; border-radius: 24px; border: 1px solid var(--line); background: var(--panel); box-shadow: 0 20px 80px oklch(25% .01 90 / .15); max-height: 90dvh; overflow: auto; }
 .modal-close { position: absolute; top: 13px; right: 13px; }
@@ -271,6 +300,11 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
   .velocity-footer > span { max-width: 95px; font-size: 9px; }
   .velocity-footer .key-options { gap: 5px; }
   .velocity-footer input { width: 46px; }
+  .value-property-bar { gap: 6px; }
+  .value-property-bar select { max-width: 115px; }
+  .value-footer > span { max-width: 80px; font-size: 9px; }
+  .value-footer .key-options { gap: 5px; }
+  .value-footer input { width: 45px; }
   .lane-label { padding: 0 10px; gap: 6px; font-size: 9px; }
   .ruler-label { padding: 0 10px; font-size: 9px; }
   .timeline-ruler { height: 29px; }
