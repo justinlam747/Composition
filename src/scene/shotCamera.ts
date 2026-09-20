@@ -3,6 +3,7 @@ import { CAMERA_ID, sample, toQuaternion, type Project } from '../core/project';
 
 export const SHOT_ASPECT = 16 / 9;
 export const SHOT_FOV = 38;
+export const MIN_PREVIEW_SCALE = .35;
 
 // Match the on-screen gate to the exported image, independently of panel sizes.
 export function cameraFrame(width: number, height: number) {
@@ -10,6 +11,19 @@ export function cameraFrame(width: number, height: number) {
   const w = Math.max(1, Math.min(width - padding * 2, (height - vertical * 2) * SHOT_ASPECT));
   const h = w / SHOT_ASPECT;
   return { x: (width - w) / 2, y: (height - h) / 2, width: w, height: h };
+}
+
+export function cameraPreviewFrame(width: number, height: number, scale: number, offsetX = 0, offsetY = 0) {
+  const frame = cameraFrame(width, height);
+  const previewScale = Math.max(MIN_PREVIEW_SCALE, Math.min(1, scale));
+  const previewWidth = frame.width * previewScale, previewHeight = frame.height * previewScale;
+  const centeredX = (width - previewWidth) / 2, centeredY = (height - previewHeight) / 2;
+  return {
+    x: centeredX + Math.max(-centeredX, Math.min(centeredX, offsetX)),
+    y: centeredY + Math.max(-centeredY, Math.min(centeredY, offsetY)),
+    width: previewWidth,
+    height: previewHeight,
+  };
 }
 
 export function createShotCamera(scene: THREE.Scene) {

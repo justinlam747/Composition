@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { createProp } from './prop';
 import { registerDirectorCapture } from './directorCapture';
-import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { MousePointer2, Move, Rotate3D, Maximize, Camera, Focus, Box, Scan, Minimize2, Maximize2 } from 'lucide-react';
+import { MousePointer2, Move, Rotate3D, Maximize, Camera, Focus, Box, Minimize2, Maximize2 } from 'lucide-react';
 import { BONES, CAMERA_ID, HUMANOID_ID, clipAt, clipSourceTime, hasCharacter, hasTarget, type Project, MAX_ROTATION_PATH_POINTS, fromQuaternion, rotationPathTo, sample, toQuaternion, unwrapRotation, type Vec3 } from '../core/project';
 import { clipPreview } from '../core/clips';
 import { studio, useStudio } from '../core/store';
@@ -13,9 +12,7 @@ import { refineRotationPath } from '../core/rotationPath';
 import { createMannequin, type Mannequin } from './mannequin';
 import { registerGuideExporter, recordCanvas } from './guideExport';
 import { gizmoSizeForPart } from './gizmoSize';
-import { ARExperience, initialARState } from './arExperience';
-import ARControls from '../components/ARControls';
-import { cameraFrame, createShotCamera } from './shotCamera';
+import { cameraPreviewFrame, createShotCamera, MIN_PREVIEW_SCALE } from './shotCamera';
 import { changeCameraView, registerCameraNavigation } from './cameraNavigation';
 import { phoneCamera } from './phoneCamera';
 import { createWebLine } from './webLine';
@@ -24,16 +21,11 @@ export default function Viewport({ active = true }: { active?: boolean }) {
   const activeView = useRef(active);
   activeView.current = active;
   const host = useRef<HTMLDivElement>(null);
-  const video = useRef<HTMLVideoElement>(null);
-  const xrOverlay = useRef<HTMLDivElement>(null);
-  const experience = useRef<ARExperience | null>(null);
   const matchCamera = useRef<() => void>(() => {});
-  const [ar, setAR] = useState(initialARState);
-  const [arOpen, setAROpen] = useState(false);
-  const [mirrored, setMirrored] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [frameMinimized, setFrameMinimized] = useState(false);
+  const [frameScale, setFrameScale] = useState(1);
+  const resizeCameraPreview = useRef<(scale: number, resetPosition?: boolean) => void>(() => {});
   const state = useStudio();
   useEffect(() => {
     const container = host.current!;
@@ -72,10 +64,6 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     const grid = new THREE.GridHelper(40, 80, '#b5b4ae', '#d1d0c9'); grid.position.y = -.009; scene.add(grid);
     const placement = new THREE.Mesh(new THREE.RingGeometry(.1, .15, 40), new THREE.MeshBasicMaterial({ color: '#9c652f', side: THREE.DoubleSide, depthTest: false }));
     placement.rotation.x = -Math.PI / 2; placement.renderOrder = 100; placement.visible = false; scene.add(placement);
-    const arExperience = new ARExperience({ renderer, scene, content, camera, orbit, ground, video: video.current!, overlay: xrOverlay.current!, changed: setAR,
-      modeChanged: mode => studio.patch({ camera: mode === 'idle' ? 'orbit' : mode, playing: false, selectionActive: false }),
-    });
-    experience.current = arExperience;
     let model: Mannequin | null = null;
     const webLine = createWebLine(content);
     const props = new Map<string, ReturnType<typeof createProp>>();
@@ -117,11 +105,8 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     let refinementBase: Vec3[] | null = null;
     let dragging = false, disposed = false, last = performance.now(), frameRequest = -1, lastSelection = '', lastMode = '', lastSpace = '', lastTime = -1, lastProject: unknown = null;
     let editSource: Project | null = null, editId: string | null = null, editView: Project | null = null;
-    let viewRevision = 0;
     const unregisterNavigation = registerCameraNavigation(async view => {
-      const revision = ++viewRevision;
-      await arExperience.stop();
-      if (disposed || revision !== viewRevision) return;
+      if (disposed) return;
       if (view === 'shot') enterCamera();
       else {
         if (view === 'orbit' && studio.get().project.camera && camera.position.distanceTo(shot.camera.position) < 1) {
@@ -129,7 +114,6 @@ export default function Viewport({ active = true }: { active?: boolean }) {
         }
         studio.patch({ camera: view, selectionActive: false });
       }
-      setAROpen(false);
     });
     const modelReady = createMannequin().then(loaded => {
       if (disposed) { loaded.dispose(); return; }
@@ -180,7 +164,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       studio.setValue(value, s.channel === 'rotation' ? route ?? undefined : undefined);
     });
     const ray = new THREE.Raycaster(), pointer = new THREE.Vector2(), start = new THREE.Vector2();
-    let holding = false, piloting = false;
+    let holding = false, piloting = false, previewPanning = false;
     const keys = new Set<string>();
     const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE']);
     function moveCamera(target: THREE.Camera, dt: number) {
@@ -205,6 +189,9 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       start.set(event.clientX, event.clientY);
       renderer.domElement.focus({ preventScroll: true });
       const s = studio.get();
+      if (!s.phoneControl && !s.exporting && !s.playing && !s.preview && s.camera === 'shot' && event.button === 1) {
+        event.preventDefault(); previewPanning = true; renderer.domElement.setPointerCapture(event.pointerId); return;
+      }
       if (!s.phoneControl && !s.exporting && !s.playing && !s.preview && s.camera === 'shot' && event.button === 0 && !transform.axis) {
         holding = true; renderer.domElement.setPointerCapture(event.pointerId);
         if (s.camera === 'shot') beginPilot();
@@ -212,6 +199,10 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     }
     function pointerMove(event: PointerEvent) {
       const s = studio.get();
+      if (previewPanning) {
+        if (s.phoneControl || s.exporting || s.playing || s.preview || s.camera !== 'shot') { previewPanning = false; return; }
+        event.preventDefault(); moveCameraPreview(event.movementX, event.movementY); return;
+      }
       if (s.phoneControl || s.exporting || s.playing || s.preview || !holding || dragging || s.camera !== 'shot') return;
       const activeCamera = shot.camera;
       const look = new THREE.Euler().setFromQuaternion(activeCamera.quaternion, 'YXZ');
@@ -219,10 +210,10 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       if (s.camera === 'shot') savePilot();
     }
     function pointerUp(event: PointerEvent) {
-      holding = false;
+      holding = false; previewPanning = false;
       if (![...keys].some(key => movementKeys.has(key))) endPilot();
       if (renderer.domElement.hasPointerCapture(event.pointerId)) renderer.domElement.releasePointerCapture(event.pointerId);
-      if (studio.get().exporting || ['ar', 'shot'].includes(studio.get().camera) || studio.get().preview || dragging || transform.axis || start.distanceTo(new THREE.Vector2(event.clientX, event.clientY)) > 5) return;
+      if (studio.get().exporting || studio.get().camera === 'shot' || studio.get().preview || dragging || transform.axis || start.distanceTo(new THREE.Vector2(event.clientX, event.clientY)) > 5) return;
       const rect = renderer.domElement.getBoundingClientRect(); pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1); ray.setFromCamera(pointer, camera);
       if (studio.get().directorPicking) {
         const point = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
@@ -246,24 +237,51 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       keys.add(e.code);
     }
     function keyUp(e: KeyboardEvent) { keys.delete(e.code); if (!holding && ![...keys].some(key => movementKeys.has(key))) endPilot(); }
-    function blur() { keys.clear(); holding = false; endPilot(); if (dragging) { dragging = false; rotationPath = null; refinementBase = null; studio.end(); lastTime = -1; lastProject = null; } }
+    function blur() { keys.clear(); holding = false; previewPanning = false; endPilot(); if (dragging) { dragging = false; rotationPath = null; refinementBase = null; studio.end(); lastTime = -1; lastProject = null; } }
     function visibility() { if (document.hidden) { studio.patch({ playing: false }); blur(); } }
     renderer.domElement.addEventListener('pointerdown', pointerDown);
     renderer.domElement.addEventListener('pointermove', pointerMove);
     renderer.domElement.addEventListener('pointerup', pointerUp);
     renderer.domElement.addEventListener('pointercancel', blur);
     window.addEventListener('keydown', keyDown); window.addEventListener('keyup', keyUp); window.addEventListener('blur', blur); document.addEventListener('visibilitychange', visibility);
-    function resizeViewport() {
-      const { width, height } = container.getBoundingClientRect();
-      if (!width || !height || renderer.xr.isPresenting) return;
-      camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height);
-      const frame = cameraFrame(width, height);
+    let previewScale = 1, previewOffsetX = 0, previewOffsetY = 0;
+    function updateCameraFrame(width: number, height: number) {
+      const centered = cameraPreviewFrame(width, height, previewScale);
+      previewOffsetX = Math.max(-centered.x, Math.min(centered.x, previewOffsetX));
+      previewOffsetY = Math.max(-centered.y, Math.min(centered.y, previewOffsetY));
+      const frame = cameraPreviewFrame(width, height, previewScale, previewOffsetX, previewOffsetY);
       for (const [name, value] of Object.entries(frame)) container.style.setProperty(`--frame-${name}`, `${value}px`);
     }
+    function setPreviewScale(scale: number, resetPosition = false) {
+      const next = Math.max(MIN_PREVIEW_SCALE, Math.min(1, scale));
+      if (resetPosition) { previewOffsetX = 0; previewOffsetY = 0; }
+      if (Math.abs(next - previewScale) < .001 && !resetPosition) return;
+      previewScale = next; setFrameScale(next);
+      const { width, height } = container.getBoundingClientRect();
+      if (width && height) updateCameraFrame(width, height);
+    }
+    function moveCameraPreview(x: number, y: number) {
+      previewOffsetX += x; previewOffsetY += y;
+      const { width, height } = container.getBoundingClientRect();
+      if (width && height) updateCameraFrame(width, height);
+    }
+    resizeCameraPreview.current = setPreviewScale;
+    function wheel(event: WheelEvent) {
+      const current = studio.get();
+      if (current.camera !== 'shot' || current.phoneControl || current.exporting || current.preview) return;
+      event.preventDefault();
+      setPreviewScale(previewScale * Math.exp(-event.deltaY * .0015));
+    }
+    renderer.domElement.addEventListener('wheel', wheel, { passive: false });
+    function resizeViewport() {
+      const { width, height } = container.getBoundingClientRect();
+      if (!width || !height) return;
+      camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height);
+      updateCameraFrame(width, height);
+    }
     const resize = new ResizeObserver(resizeViewport); resize.observe(container);
-    renderer.xr.addEventListener('sessionend', resizeViewport);
     let wasPhoneControlled = false;
-    renderer.setAnimationLoop((_time, xrFrame) => {
+    renderer.setAnimationLoop(() => {
       if (disposed) return;
       const now = performance.now(), dt = Math.min((now - last) / 1000, .1); last = now; studio.tick(dt);
       const s = studio.get();
@@ -273,26 +291,24 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       wasPhoneControlled = s.phoneControl;
       if (editSource !== s.project || editId !== s.editingClip) { editSource = s.project; editId = s.editingClip; editView = clipPreview(s.project, s.editingClip); }
       const project = s.preview ?? editView ?? s.project;
-      const inRoom = s.camera === 'ar';
       const inShot = s.camera === 'shot';
       const marker = s.preview ? s.directorPreviewPlacement : s.directorPlacement;
-      placement.visible = !!marker && !inRoom;
+      placement.visible = !!marker;
       if (marker) placement.position.set(marker[0], .005, marker[2]);
       if (piloting && (!inShot || s.phoneControl || s.playing || s.exporting || s.preview)) blur();
-      grid.visible = s.showGrid && s.camera !== 'camera' && !inRoom;
-      arExperience.updateFrame(xrFrame);
+      grid.visible = s.showGrid;
       const poseChanged = phoneReleased || s.time !== lastTime || project !== lastProject;
       if (poseChanged && !dragging) { syncObjects(project, s.time); shot.sync(project, s.time); lastTime = s.time; lastProject = project; }
       const phonePose = s.phoneControl ? phoneCamera.pose() : undefined;
       if (phonePose) { shot.camera.position.fromArray(phonePose.position); shot.camera.quaternion.fromArray(phonePose.quaternion); }
-      shot.show(!!project.camera && !inShot && !inRoom && s.camera !== 'camera');
+      shot.show(!!project.camera && !inShot);
       if (model) {
-        model.highlightJoint(!inRoom && !s.preview && s.selectionActive && s.objectId === HUMANOID_ID && hasCharacter(project) && !s.playing && s.selected !== 'model' ? s.selected : null);
-        model.helper.visible = !inRoom && !s.preview && s.selectionActive && s.showRig && hasCharacter(project);
-        model.markers.forEach((marker, id) => { marker.visible = !inRoom && !s.preview && s.selectionActive && s.showRig; marker.scale.setScalar(id === s.selected ? 1.8 : 1); });
+        model.highlightJoint(!s.preview && s.selectionActive && s.objectId === HUMANOID_ID && hasCharacter(project) && !s.playing && s.selected !== 'model' ? s.selected : null);
+        model.helper.visible = !s.preview && s.selectionActive && s.showRig && hasCharacter(project);
+        model.markers.forEach((marker, id) => { marker.visible = !s.preview && s.selectionActive && s.showRig; marker.scale.setScalar(id === s.selected ? 1.8 : 1); });
       }
-      props.forEach((prop, id) => prop.meshes.forEach(mesh => mesh.material.emissive.set(!inRoom && !s.preview && s.selectionActive && s.objectId === id && !s.playing ? '#372315' : '#000000')));
-      const selection = !inRoom && !inShot && !s.preview && s.selectionActive && hasTarget(project, s.objectId) && !s.playing ? `${s.objectId}:${s.selected}` : '';
+      props.forEach((prop, id) => prop.meshes.forEach(mesh => mesh.material.emissive.set(!s.preview && s.selectionActive && s.objectId === id && !s.playing ? '#372315' : '#000000')));
+      const selection = !inShot && !s.preview && s.selectionActive && hasTarget(project, s.objectId) && !s.playing ? `${s.objectId}:${s.selected}` : '';
       if (selection !== lastSelection) {
         const object = s.selected === 'model' ? selectedRoot() : model?.bones.get(s.selected);
         if (selection && object) transform.attach(object); else transform.detach(); lastSelection = selection;
@@ -312,11 +328,11 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       if (s.mode !== lastMode) { transform.setMode(s.mode); lastMode = s.mode; }
       const space = s.selected === 'model' ? s.space : 'local';
       if (space !== lastSpace) { transform.setSpace(space); lastSpace = space; }
-      if (!inRoom && !inShot && frameRequest !== s.frameRequest) {
+      if (!inShot && frameRequest !== s.frameRequest) {
         const center = (selectedRoot()?.position.clone() ?? new THREE.Vector3()).add(new THREE.Vector3(0, 1, 0));
         camera.position.copy(center).add(new THREE.Vector3(3.1, 1.1, 5.2)); orbit.target.copy(center); camera.lookAt(center); frameRequest = s.frameRequest;
       }
-      orbit.enabled = !s.exporting && !dragging && !s.directorPicking && (s.camera === 'orbit' || s.camera === 'camera');
+      orbit.enabled = !s.exporting && !dragging && !s.directorPicking && s.camera === 'orbit';
       if (orbit.enabled) orbit.update();
       if (inShot && !s.phoneControl && !s.playing && !s.preview && [...keys].some(key => movementKeys.has(key))) {
         beginPilot();
@@ -324,7 +340,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
         savePilot();
       }
       if (inShot) {
-        const width = container.clientWidth, height = container.clientHeight, frame = cameraFrame(width, height);
+        const width = container.clientWidth, height = container.clientHeight, frame = cameraPreviewFrame(width, height, previewScale, previewOffsetX, previewOffsetY);
         renderer.setViewport(0, 0, width, height); renderer.setScissorTest(false); renderer.clear();
         renderer.setViewport(frame.x, height - frame.y - frame.height, frame.width, frame.height);
         renderer.setScissor(frame.x, height - frame.y - frame.height, frame.width, frame.height); renderer.setScissorTest(true);
@@ -335,7 +351,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     let directorRenderer: THREE.WebGLRenderer | undefined;
     const unregisterDirector = registerDirectorCapture(() => {
       const current = studio.get();
-      if (disposed || !model || dragging || current.exporting || current.phoneControl || current.camera === 'ar' || !activeView.current) throw new Error('Finish loading, dragging or capture before asking the director.');
+      if (disposed || !model || dragging || current.exporting || current.phoneControl || !activeView.current) throw new Error('Finish loading, dragging or capture before asking the director.');
       directorRenderer ??= new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
       directorRenderer.setPixelRatio(1); directorRenderer.setSize(768, 432); directorRenderer.toneMapping = renderer.toneMapping; directorRenderer.toneMappingExposure = renderer.toneMappingExposure;
       const view = (current.camera === 'shot' ? shot.camera : camera).clone(); view.aspect = 16 / 9; view.updateProjectionMatrix();
@@ -351,7 +367,6 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     const unregisterExport = registerGuideExporter(async () => {
       await modelReady;
       if (disposed) throw new Error('The scene was closed. Return to the editor and try again.');
-      if (arExperience.state.mode !== 'idle') throw new Error('Stop camera / AR before exporting a guide. Camera frames stay local.');
       if (studio.get().phoneControl) throw new Error('Stop phone control before exporting a guide.');
       if (!model || dragging || studio.get().preview || studio.get().exporting) throw new Error('Finish loading or close the suggestion preview before exporting.');
       const snapshot = structuredClone(studio.get().project), previousTime = studio.get().time;
@@ -381,18 +396,17 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       }
     });
     return () => {
-      disposed = true; blur(); unregisterNavigation(); unregisterExport(); unregisterDirector(); directorRenderer?.dispose(); placement.geometry.dispose(); placement.material.dispose(); renderer.setAnimationLoop(null); resize.disconnect(); renderer.xr.removeEventListener('sessionend', resizeViewport); shot.dispose(); webLine.dispose();
-      void arExperience.dispose().finally(() => renderer.dispose()); experience.current = null;
+      disposed = true; blur(); unregisterNavigation(); unregisterExport(); unregisterDirector(); directorRenderer?.dispose(); placement.geometry.dispose(); placement.material.dispose(); renderer.setAnimationLoop(null); resize.disconnect(); shot.dispose(); webLine.dispose(); renderer.dispose();
       renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('pointercancel', blur);
+      renderer.domElement.removeEventListener('wheel', wheel);
       window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', blur); document.removeEventListener('visibilitychange', visibility);
       if (dragging) studio.end(); transform.dispose(); orbit.dispose(); model?.dispose(); props.forEach(p => p.dispose()); grid.geometry.dispose();
       (Array.isArray(grid.material) ? grid.material : [grid.material]).forEach(m => m.dispose()); groundGeometry.dispose(); groundMaterial.dispose(); keyLight.shadow.map?.dispose(); renderer.domElement.remove();
     };
   }, []);
-  return <section className={`viewport${state.camera === 'camera' ? ' camera-active' : ''}${state.camera === 'shot' ? ' shot-active' : ''}`} aria-label="Scene editor" aria-busy={loading && !error}>
-    <video ref={video} className={`camera-feed${mirrored ? ' mirrored' : ''}`} aria-label="Live camera preview" muted playsInline autoPlay hidden={ar.mode !== 'camera' || ar.phase !== 'live'} />
-    <div ref={host} className="canvas-host"><div className={`shot-frame${frameMinimized ? ' is-minimized' : ''}`} hidden={state.camera !== 'shot'} aria-label="Camera frame"><span>Camera · 16:9</span></div></div>
-    {state.camera === 'shot' && <button className="camera-frame-toggle icon-button" title={frameMinimized ? 'Show camera overlay' : 'Minimize camera overlay'} aria-label={frameMinimized ? 'Show camera overlay' : 'Minimize camera overlay'} aria-pressed={frameMinimized} onClick={() => setFrameMinimized(value => !value)}>{frameMinimized ? <Maximize2 size={18} /> : <Minimize2 size={18} />}</button>}
+  return <section className={`viewport${state.camera === 'shot' ? ' shot-active' : ''}`} aria-label="Scene editor" aria-busy={loading && !error}>
+    <div ref={host} className="canvas-host"><div className="shot-frame" hidden={state.camera !== 'shot'} aria-label="Camera frame"><span>Camera · 16:9 · {Math.round(frameScale * 100)}%</span></div></div>
+    {state.camera === 'shot' && <button className="camera-frame-toggle icon-button" title={frameScale < 1 ? 'Reset camera preview' : 'Shrink camera preview'} aria-label={frameScale < 1 ? 'Reset camera preview' : 'Shrink camera preview'} aria-pressed={frameScale < 1} onClick={() => resizeCameraPreview.current(frameScale < 1 ? 1 : .72, frameScale < 1)}>{frameScale < 1 ? <Maximize2 size={18} /> : <Minimize2 size={18} />}</button>}
     {error && <div className="viewport-error" role="alert">{error}</div>}
     {state.directorPicking && <div className="director-placement-hint" role="status">Click the floor to place your marker <button onClick={() => studio.patch({ directorPicking: false })}>Cancel</button></div>}
     <div className="viewport-top">{state.camera !== 'shot' && <button className="frame-button icon-button" title="Frame selection (F)" aria-label="Frame character" onClick={() => studio.patch({ frameRequest: state.frameRequest + 1 })}><Focus size={19} /></button>}</div>
@@ -402,16 +416,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       {state.objectId !== CAMERA_ID && <button title="Scale model (S)" aria-label="Scale model" className={state.mode === 'scale' ? 'active' : ''} onClick={() => studio.setMode('scale')}><Maximize size={17} /></button>}
     </div>}
     {!state.project.objects.some(o => !o.hidden) && <div className="empty-scene"><Box size={30} /><h2>Add a character</h2><button className="button primary" onClick={studio.add}>Add sample mannequin</button></div>}
-    {arOpen && state.camera !== 'ar' && <ARControls state={ar} experience={experience.current} mirrored={mirrored} onMirror={() => setMirrored(value => !value)} onClose={() => setAROpen(false)} />}
     {state.objectId === CAMERA_ID && state.selectionActive && state.camera === 'orbit' && <button className="button secondary camera-match" onClick={() => matchCamera.current()}>Set camera from this view</button>}
-    <div className="viewport-bottom"><div className="camera-switch"><button title="Drag to orbit; scroll to zoom" className={state.camera === 'orbit' ? 'selected' : ''} onClick={() => changeCameraView('orbit')}><MousePointer2 size={15} /> Orbit</button><button title="Drag to aim; WASD to move; Q/E up and down. Edits key at the playhead." className={state.camera === 'shot' ? 'selected' : ''} disabled={loading || !!error || !!state.preview} onClick={() => changeCameraView('shot')}><Camera size={15} /> Camera view</button><button className={arOpen || ar.mode !== 'idle' ? 'selected' : ''} aria-expanded={arOpen} disabled={loading || !!error || !!state.preview} onClick={() => { setAROpen(open => !open); studio.patch({ selectionActive: false }); }}><Scan size={15} /> AR</button></div></div>
-    {createPortal(<div ref={xrOverlay} className={`xr-overlay${state.camera === 'ar' ? ' is-active' : ''}`}>
-      <div className="xr-instructions" role="status"><strong>Place your scene</strong><span>{ar.phase === 'starting' ? 'Starting room placement…' : ar.message}</span></div>
-      <div className="xr-actions">
-        {ar.phase === 'ready' && <button className="button primary" onClick={() => experience.current?.place()}>Place here</button>}
-        {ar.phase === 'placed' && <><button className="button secondary" onClick={() => experience.current?.reposition()}>Place again</button><button className="button secondary" onClick={studio.togglePlay}>{state.playing ? 'Pause animation' : 'Play animation'}</button></>}
-        <button className="button secondary" onClick={() => experience.current?.stop()}>Exit AR</button>
-      </div>
-    </div>, document.body)}
+    <div className="viewport-bottom"><div className="camera-switch"><button title="Drag to orbit; scroll to zoom" className={state.camera === 'orbit' ? 'selected' : ''} onClick={() => changeCameraView('orbit')}><MousePointer2 size={15} /> Orbit</button><button title="Drag to aim; middle-drag to move preview; scroll to resize preview; WASD to move; Q/E up and down. Edits key at the playhead." className={state.camera === 'shot' ? 'selected' : ''} disabled={loading || !!error || !!state.preview} onClick={() => changeCameraView('shot')}><Camera size={15} /> Camera view</button></div></div>
   </section>;
 }

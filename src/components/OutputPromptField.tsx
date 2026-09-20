@@ -35,7 +35,7 @@ export default function OutputPromptField({ target, title, value, onChange, conf
     {children}
     <label className="sr-only" htmlFor={`output-${target}-prompt`}>{target === 'video' ? 'Video instructions' : 'Image prompt'}</label>
     <div className="output-prompt-input">
-      <textarea id={`output-${target}-prompt`} rows={3} maxLength={4000} value={value} disabled={disabled || busy} onChange={event => onChange(event.target.value)} placeholder={target === 'video' ? 'Describe the video you have in mind…' : 'Describe a character, setting or style…'} />
+      <textarea id={`output-${target}-prompt`} rows={7} maxLength={4000} value={value} disabled={disabled || busy} onChange={event => onChange(event.target.value)} placeholder={target === 'video' ? 'Describe the video and visual style you have in mind…' : 'Describe a character, setting or style…'} />
       <button className="output-prompt-optimize" aria-label={`${optimizedPrompt ? 'Reoptimize' : 'Optimize'} ${name} prompt`} disabled={disabled || busy || !configured || !(value.trim() || context.trim())} onClick={() => void optimize()}><Sparkles size={14} />{busy ? 'Optimizing…' : optimizedPrompt ? 'Reoptimize' : 'Optimize'}</button>
     </div>
     {!configured && <p className="output-note">Connect Gemini on the server to optimize prompts.</p>}

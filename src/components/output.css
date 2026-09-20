@@ -1,7 +1,8 @@
 .output-prompt-field { display: grid; gap: 12px; }
 .output-prompt-field .output-section-title { margin: 0; flex-wrap: wrap; gap: 10px; }
 .output-prompt-input { position: relative; }
-.output-prompt-input textarea { min-height: 116px; padding-bottom: 48px; }
+.output-prompt-input textarea { min-height: 176px; max-height: 280px; padding-bottom: 48px; overflow-y: auto; scrollbar-width: none; }
+.output-prompt-input textarea::-webkit-scrollbar { display: none; }
 .output-prompt-optimize { position: absolute; right: 9px; bottom: 9px; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); color: var(--text); font: inherit; font-size: 10px; font-weight: 650; }
 .output-prompt-optimize:hover:not(:disabled) { background: var(--panel); }
 .output-prompt-optimize:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

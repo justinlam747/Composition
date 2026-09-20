@@ -12,6 +12,11 @@ async function loadDemo(page: Page) {
   await expect(page.getByRole('region', { name: 'Animation blocks timeline' })).toBeVisible();
   await expect(page.getByLabel('Camera frame', { exact: true })).toBeVisible();
 }
+async function openOutput(page: Page) {
+  const output = page.getByRole('button', { name: 'Output', exact: true });
+  if (!await output.isVisible()) await page.getByRole('button', { name: 'Scene menu' }).click();
+  await output.click();
+}
 test('the first cached block can be dragged into a fresh timeline', async ({ page }) => {
   await ready(page);
   const target = page.getByLabel('Mannequin animation track', { exact: true }), bounds = (await target.boundingBox())!;
@@ -106,12 +111,12 @@ test('the saved AI sequence exports a real guide video and renders its three act
     await page.waitForTimeout(100);
     await page.getByRole('region', { name: 'Scene editor', exact: true }).screenshot({ path: `test-results-blocks/demo-${name}.png` });
   }
-  await page.getByRole('button', { name: 'Output', exact: true }).click();
+  await openOutput(page);
   await page.getByRole('button', { name: 'Create preview', exact: true }).click();
   const guide = page.getByLabel('Guide preview', { exact: true }); await expect(guide).toBeVisible({ timeout: 90000 });
   await expect.poll(() => guide.evaluate(node => (node as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
   expect(await guide.evaluate(node => (node as HTMLVideoElement).videoWidth)).toBe(1280);
   expect(await guide.evaluate(node => (node as HTMLVideoElement).duration)).toBeCloseTo(10, 1);
-  const downloading = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download composition MP4', exact: true }).click();
-  await (await downloading).saveAs('test-results-blocks/spider-demo-guide.mp4');
+  await expect(page.getByText('Scene camera · Includes camera motion', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Download composition MP4', exact: true })).toHaveCount(0);
 });

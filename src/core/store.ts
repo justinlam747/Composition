@@ -16,7 +16,7 @@ function restore(): Project | undefined { try { const raw = localStorage.getItem
 export interface EditorState {
   project: Project; preview: Project | null; exporting: boolean; objectId: string; time: number; playing: boolean; loop: boolean; selected: string; channel: Channel;
   selectedKey: string | null; mode: 'translate' | 'rotate' | 'scale'; space: 'world' | 'local';
-  showRig: boolean; showGrid: boolean; selectionActive: boolean; camera: 'orbit' | 'shot' | 'camera' | 'ar'; frameRequest: number;
+  showRig: boolean; showGrid: boolean; selectionActive: boolean; camera: 'orbit' | 'shot'; frameRequest: number;
   status: string; undoCount: number; redoCount: number;
   selectedClip: string | null; editingClip: string | null;
   phoneControl: boolean;
@@ -120,7 +120,7 @@ export const studio = {
   get: () => state,
   subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; },
   patch: emit,
-  directorBusy: () => !!transaction || state.exporting || state.phoneControl || state.camera === 'ar',
+  directorBusy: () => !!transaction || state.exporting || state.phoneControl,
   applyDirector: (execution: DirectorExecution) => {
     if (execution.status !== 'ready' || execution.proposal.status !== 'approved') throw new Error('Approve the current proposal before applying it.');
     if (studio.directorBusy()) throw new Error('Finish the current drag, capture or phone control before applying.');

@@ -1,31 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, ImagePlus, Trash2, Upload } from 'lucide-react';
+import { ArrowRight, Download, ImagePlus, Trash2, Upload } from 'lucide-react';
 import { api, ApiError, assetUrl, type Asset, type ImageJob } from '../core/api';
 import { uid, type ImageRequest } from '../core/project';
 import { videoReferences } from '../core/proposals';
 import { studio, useStudio } from '../core/store';
 import ServiceIcon from './ServiceIcon';
-import OutputPromptField from './OutputPromptField';
 import { excludeVideoReference, imageGenerationReferences, removeOutputImage } from '../core/outputImages';
 
-export default function OutputImages({ configured, disabled, onBusyChange }: { configured: boolean; disabled: boolean; onBusyChange: (busy: boolean) => void }) {
+export default function OutputImages({ configured, disabled, prompt, continueDisabled, onContinue, onBusyChange }: {
+  configured: boolean; disabled: boolean; prompt: string; continueDisabled: boolean; onContinue: () => void; onBusyChange: (busy: boolean) => void;
+}) {
   const s = useStudio(), generation = s.project.generation, request = generation?.imageRequest;
-  const [prompt, setPrompt] = useState(generation?.imagePrompt ?? request?.prompt ?? ''), [job, setJob] = useState<ImageJob | null>(null);
+  const [job, setJob] = useState<ImageJob | null>(null);
   const [error, setError] = useState(''), [requestError, setRequestError] = useState(''), [missing, setMissing] = useState(false), [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const uploadInput = useRef<HTMLInputElement>(null);
   const [refresh, setRefresh] = useState(0);
   const [frame, setFrame] = useState<{ guideId: string; asset: Asset; last: Asset } | null>(null), [frameError, setFrameError] = useState(''), [frameRefresh, setFrameRefresh] = useState(0);
-  const [optimizing, setOptimizing] = useState(false);
   const mounted = useRef(false), submittingRef = useRef(false);
   const pending = !!request && (!job || job.id !== request.id || job.status === 'running');
   const images = generation?.imageAssetIds ?? [], selected = videoReferences(s.project);
-  const blocked = disabled || pending || submitting || uploading || optimizing;
+  const blocked = disabled || pending || submitting || uploading;
   const imageReferences = imageGenerationReferences(generation);
   const count = selected.length;
   const frameReady = frame?.guideId === generation?.guideAssetId;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { onBusyChange(pending || submitting || uploading || optimizing); }, [pending, submitting, uploading, optimizing, onBusyChange]);
+  useEffect(() => { onBusyChange(pending || submitting || uploading); }, [pending, submitting, uploading, onBusyChange]);
   useEffect(() => {
     const guideId = generation?.guideAssetId;
     setFrame(null); setFrameError(''); if (!guideId) return;
@@ -132,11 +132,9 @@ export default function OutputImages({ configured, disabled, onBusyChange }: { c
   }
   const lastIds = new Set(Object.values(generation?.imagePairs ?? {}));
   return <section className="output-images" aria-label="Image generation">
-    <OutputPromptField target="baseline" title={<h3><ImagePlus size={15} />Visual baseline <span>Optional</span></h3>} value={prompt} onChange={value => { setPrompt(value); const current = studio.get().project.generation; if (current) studio.generation({ ...current, imagePrompt: value }); }} configured={configured} disabled={disabled || pending || submitting || uploading} context={generation?.instructions} onBusyChange={setOptimizing}>
-      {frameReady && frame ? <div className="output-frame-sources"><figure><img src={assetUrl(frame.asset.id)} alt="Composition first frame" /><figcaption>First frame</figcaption></figure><figure><img src={assetUrl(frame.last.id)} alt="Composition last frame" /><figcaption>Last frame</figcaption></figure></div> : frameError ? <div className="output-attention"><p>{frameError}</p><button className="text-link" onClick={() => setFrameRefresh(value => value + 1)}>Retry composition frames</button></div> : <p className="output-note" role="status">Preparing composition frames...</p>}
-    </OutputPromptField>
+    <div className="output-section-title"><h3><ImagePlus size={15} />Visual baseline <span>Optional</span></h3></div>
+    {frameReady && frame ? <div className="output-frame-sources"><figure><img src={assetUrl(frame.asset.id)} alt="Composition first frame" /><figcaption>First frame</figcaption></figure><figure><img src={assetUrl(frame.last.id)} alt="Composition last frame" /><figcaption>Last frame</figcaption></figure></div> : frameError ? <div className="output-attention"><p>{frameError}</p><button className="text-link" onClick={() => setFrameRefresh(value => value + 1)}>Retry composition frames</button></div> : <p className="output-note" role="status">Preparing composition frames...</p>}
     {job?.status === 'failed' ? <div className="output-attention" role="alert"><p>{job.error}</p>{!!job.assetIds?.length && <p>{job.assetIds.length} images saved below.</p>}<button className="button secondary" disabled={disabled} onClick={() => { const current = studio.get().project.generation; if (current) { const { imageRequest: _request, ...retained } = current; studio.generation(retained); } setJob(null); setError(''); setRequestError(''); }}>Start another image</button></div> : pending ? <div className="output-image-status" role="status"><span>{missing ? 'Image request not confirmed.' : `Generating image ${Math.min((job?.assetIds?.length ?? 0) + 1, (request?.count ?? 1) * (request?.paired ? 2 : 1))} of ${(request?.count ?? 1) * (request?.paired ? 2 : 1)}...`}</span>{missing && <button className="text-link" disabled={disabled || submitting} onClick={() => void submit(request!)}>Retry same image request</button>}</div> : <div className="output-image-actions"><button className="button secondary" disabled={blocked || !configured || !frameReady || !prompt.trim()} onClick={generate}><ServiceIcon service="gemini" />Generate images</button></div>}
-    <div className="output-image-actions"><input ref={uploadInput} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" multiple aria-label="Upload reference images" disabled={blocked} onChange={event => { void upload(event.target.files); event.target.value = ''; }} /><button className="button secondary" disabled={blocked} onClick={() => uploadInput.current?.click()}><Upload size={15} />{uploading ? 'Uploading...' : 'Upload images'}</button></div>
     <p className="output-note">Generate matching first and last images using this prompt{imageReferences.length ? ` and all ${imageReferences.length} uploaded references` : ''}. Each click creates another pair and uses 2 Gemini image generations.</p>
     {images.length > 0 && <div className="output-image-grid">{images.map((id, index) => {
       const last = generation?.imagePairs?.[id], isLast = lastIds.has(id), isBaseline = generation?.baselineAssetId === id || !!generation?.baselineAssetId && generation.imagePairs?.[generation.baselineAssetId] === id;
@@ -149,5 +147,10 @@ export default function OutputImages({ configured, disabled, onBusyChange }: { c
     })}</div>}
     {images.length > 0 && count >= 9 && <p className="output-note">All 9 video reference slots are in use. Unselect a reference to choose another.</p>}
     {(error || requestError) && <p className="inline-error" role="alert">{error || requestError}</p>}
+    <div className="output-direction-actions">
+      <input ref={uploadInput} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" multiple aria-label="Upload reference images" disabled={blocked} onChange={event => { void upload(event.target.files); event.target.value = ''; }} />
+      <button className="button secondary" disabled={blocked} onClick={() => uploadInput.current?.click()}><Upload size={15} />{uploading ? 'Uploading...' : 'Upload images'}</button>
+      <button className="button primary" aria-label="Continue to generation" disabled={continueDisabled} onClick={onContinue}>Continue<ArrowRight size={16} /></button>
+    </div>
   </section>;
 }

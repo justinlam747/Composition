@@ -70,7 +70,8 @@ export default function Timeline({ collapsed = false }: { collapsed?: boolean })
     {(clip || manualOpen) && <div className="clip-breadcrumb"><button onClick={() => { studio.patch({ editingClip: null, selectedKey: null, selectedVelocityKey: null, timelineMode: 'keys', selectionActive: false }); setManualOpen(false); }}><ArrowLeft size={14} />All blocks</button><strong>{clip?.name ?? 'Manual keyframes'}</strong><span>{clip ? 'Edits affect this block only' : 'Scene keys'}</span></div>}
     {s.timelineMode === 'value' ? <ValueTimeline /> : s.timelineMode === 'velocity' ? <VelocityTimeline /> : <><div className="timeline-toolbar">
       <TimelineTransport keyTimes={keyTimes} duration={duration} offset={offset} />
-      <div className="timeline-actions"><button className="button key-button" aria-label="Add key" title="Add key" onClick={studio.addKey} disabled={(!s.project.camera && !s.project.objects.some(o => !o.hidden)) || s.playing}><Plus size={15} /><span>Add key</span></button></div>
+      <div className="timeline-actions"><button className="button key-button" aria-label="Add key" title="Add key" onClick={studio.addKey} disabled={(!s.project.camera && !s.project.objects.some(o => !o.hidden)) || s.playing}><Plus size={15} /><span>Add key</span></button>
+        <button className="button secondary key-button delete-key-button" aria-label="Delete key" title="Delete selected key (Delete / Backspace)" disabled={!selectedKey} onClick={studio.deleteKey}><Trash2 size={15} /><span>Delete key</span></button></div>
       <TimelineModeSelect />
       {!clip && <label className="duration-label">Duration <select aria-label="Timeline duration" value={s.project.duration} onChange={e => studio.duration(Number(e.target.value))}>{Array.from({ length: 9 }, (_, i) => i + 2).map(n => <option key={n} value={n}>{n} s</option>)}</select></label>}
     </div>
@@ -80,6 +81,6 @@ export default function Timeline({ collapsed = false }: { collapsed?: boolean })
         <div className="playhead-area"><div className="playhead" style={{ left: `${time / duration * 100}%` }}><span /></div><input className="scrubber" type="range" aria-label="Timeline playhead" min="0" max={duration} step={1 / 30} value={time} onChange={e => studio.seek(offset + Number(e.target.value))} /></div>
     </div>
     </div>
-    <div className="timeline-footer"><span>{selectedKey ? `Key at ${selectedKey.time.toFixed(2)}s` : 'Select a key to edit'}</span><div className="key-options"><button className="icon-button" aria-label="Delete selected keyframe" title="Delete selected keyframe" disabled={!selectedKey} onClick={studio.deleteKey}><Trash2 size={15} /></button></div></div></>}
+    <div className="timeline-footer"><span>{selectedKey ? `Key at ${selectedKey.time.toFixed(2)}s · Delete or Backspace to remove` : 'Select a key to edit'}</span></div></>}
   </section>;
 }

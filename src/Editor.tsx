@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bone, Check, Diamond, Download, Eye, Film, FolderOpen, HelpCircle, Mic, MoreHorizontal, Pencil, Redo2, RotateCcw, Save, Shapes, Sparkles, Trash2, Undo2, X } from 'lucide-react';
+import { Bone, Check, Diamond, Download, Eye, Film, FolderOpen, HelpCircle, Mic, MoreHorizontal, Pencil, Redo2, RotateCcw, Save, Shapes, Smartphone, Sparkles, Trash2, Undo2, X } from 'lucide-react';
 import { importProject, openSavedProject, saveCurrentProject } from './core/projectSession';
 import ProjectNameDialog from './components/ProjectNameDialog';
 import { CAMERA_ID, hasCharacter, hasTarget } from './core/project';
@@ -12,6 +12,7 @@ import Viewport from './scene/Viewport';
 import TimelinePanel from './components/TimelinePanel';
 import Inspector from './components/Inspector';
 import DirectorPanel from './components/DirectorPanel';
+import PhoneCameraPanel from './components/PhoneCameraPanel';
 
 type Panel = 'scene' | 'animate';
 function saveFile(name: string, content: string) {
@@ -24,7 +25,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
   const s = useStudio();
   const [panel, setPanel] = useState<Panel>('scene');
   useEffect(() => { if (s.project.clips?.length) setPanel('animate'); }, [s.project.clips?.length]);
-  const [sidePanel, setSidePanel] = useState<'ai' | 'animations' | 'objects' | 'projects' | 'director' | null>(null);
+  const [sidePanel, setSidePanel] = useState<'ai' | 'animations' | 'objects' | 'projects' | 'director' | 'phone' | null>(null);
   const [saving, setSaving] = useState(false);
   const [naming, setNaming] = useState(false);
   async function save(goHome = false) {
@@ -66,7 +67,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
   }, [menu]);
   useEffect(() => {
     function keyboard(e: KeyboardEvent) {
-      if (!active || saving || naming || studio.get().phoneControl || studio.get().exporting || studio.get().camera === 'ar' || dialogOpen) return;
+      if (!active || saving || naming || studio.get().phoneControl || studio.get().exporting || dialogOpen) return;
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') { e.preventDefault(); void save(); return; }
       if (e.code === 'Space' && !menu && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const target = e.target as HTMLElement;
@@ -109,7 +110,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
   }, [dialogOpen]);
 
   return <div className="app-shell">
-    <header className="app-header" inert={saving || s.phoneControl || s.exporting || s.camera === 'ar'}>
+    <header className="app-header" inert={saving || s.phoneControl || s.exporting}>
       <button className="brand" aria-label="Back to projects" title="Save and return to projects" onClick={() => void save(true)}><span className="brand-mark"><Shapes size={23} strokeWidth={1.6} /></span><span>composition</span></button>
       <nav className="editor-modes" aria-label="Editor modes">
         <button className="icon-button" aria-label="Objects" title="Objects" aria-pressed={sidePanel === 'objects'} onClick={() => toggleSide('objects')}><Shapes size={19} /></button>
@@ -119,6 +120,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
       </nav>
       <div className="header-actions">
         <button className={`icon-button ${sidePanel === 'animations' ? 'is-on' : ''}`} aria-label="Animations" title="Animation library" aria-expanded={sidePanel === 'animations'} aria-controls="animations-panel" onClick={() => { toggleSide('animations'); setPanel('animate'); }}><FolderOpen size={19} /></button>
+        <button className={`icon-button ${sidePanel === 'phone' ? 'is-on' : ''}`} aria-label="Phone camera" title="Record camera movement with your phone" aria-expanded={sidePanel === 'phone'} onClick={() => toggleSide('phone')}><Smartphone size={19} /></button>
         <button className={`icon-button ${sidePanel === 'director' ? 'is-on' : ''}`} aria-label="Director" title="Talk to Director" aria-expanded={sidePanel === 'director'} onClick={() => toggleSide('director')}><Mic size={18} /></button>
         <div className="menu-wrap" ref={menuRef}>
           <button ref={menuButton} className={`icon-button ${menu ? 'is-on' : ''}`} aria-label="Scene menu" aria-expanded={menu} aria-controls="scene-menu" onClick={() => setMenu(!menu)}><MoreHorizontal size={22} /></button>
@@ -155,7 +157,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
         finally { setSaving(false); e.target.value = ''; }
       }} />
     </header>
-    <div className={`workspace ${sidePanel ? 'with-panel' : ''}`} inert={saving || s.exporting || s.camera === 'ar'}>
+    <div className={`workspace ${sidePanel ? 'with-panel' : ''}`} inert={saving || s.exporting}>
     <main inert={s.phoneControl} className={`editor-main panel-${panel}${s.selectionActive && selectedObject && !s.playing && !s.preview ? ' has-selection' : ''}`}>
       <div className="stage-area"><Viewport active={active} />
         {s.preview && <div className="preview-banner">Suggestion preview · not applied</div>}
@@ -167,6 +169,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
     {sidePanel === 'ai' && <AIPanel onClose={() => setSidePanel(null)} />}
     {sidePanel === 'animations' && <AnimationsPanel onClose={() => setSidePanel(null)} />}
     {sidePanel === 'objects' && <ObjectsPanel onClose={() => setSidePanel(null)} />}
+    {sidePanel === 'phone' && <PhoneCameraPanel onClose={() => setSidePanel(null)} />}
     <DirectorPanel open={sidePanel === 'director'} active={active} onOpen={() => toggleSide('director')} onClose={() => setSidePanel(null)} />
     {sidePanel === 'projects' && <ProjectsPanel onClose={() => setSidePanel(null)} onOpen={async id => {
       setSaving(true); studio.patch({ playing: false });
@@ -185,7 +188,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
           <span className="modal-symbol"><Diamond size={23} /></span><h2 id="modal-heading">A few simple moves.</h2>
           <ol><li>In <strong>Scene</strong>, click a body part to highlight it and open its controls. Click empty space to close them.</li><li>Drag the handles or enter values to pose the character. Edits save a key at the current time.</li><li><strong>Animate</strong> lets you play, scrub and retime those keys.</li><li>Turn on <strong>Demo mode</strong> in the three-dot menu to load a prepared idle. Turning it off keeps your existing keys.</li></ol>
           <div className="shortcut-grid"><span><kbd>G</kbd> Move</span><span><kbd>R</kbd> Rotate</span><span><kbd>S</kbd> Scale</span><span><kbd>K</kbd> Add key</span><span><kbd>Space</kbd> Play / pause</span><span><kbd>Ctrl Z</kbd> Undo</span></div>
-          <p className="help-disclosure">Open AR for a local camera overlay or room placement on supported devices. Aim at a floor or table, then place the scene. Choose Output to preview your composition, add video direction, and generate with Seedance. Live AI is optional.</p>
+          <p className="help-disclosure">Use the phone camera control to pair an iPhone and record handheld camera movement. Choose Output to preview your composition, add video direction, and generate with Seedance. Live AI is optional.</p>
         </>}
       </section>
     </div>}

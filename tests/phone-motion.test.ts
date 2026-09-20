@@ -1,12 +1,44 @@
 import { describe, expect, it } from 'vitest';
 import { Quaternion, Vector3 } from 'three';
 import { alignPhone, cameraTake, type MotionSample } from '../src/core/phoneMotion';
-import { phonePoseSchema, type PhonePose } from '../src/core/phoneProtocol';
-import { makeProject, makeCamera, CAMERA_ID, sample, toQuaternion, parseProject } from '../src/core/project';
+import { phoneMessageSchema, phonePoseSchema, phoneStateSchema, type PhonePose } from '../src/core/phoneProtocol';
+import { makeProject, makeCamera, CAMERA_ID, fromQuaternion, sample, toQuaternion, parseProject } from '../src/core/project';
 import { insertClip, transformClip } from '../src/core/clips';
 
 const pose = (changes: Partial<PhonePose> = {}): PhonePose => ({ type: 'pose', version: 1, seq: 1, time: 1, tracking: 'normal', position: [0, 0, 0], quaternion: [0, 0, 0, 1], ...changes });
 describe('phone camera motion', () => {
+  it('scales displacement from a nonzero origin without scaling rotation or the camera anchor', () => {
+    const start = pose({ position: [4, 1, 2], quaternion: toQuaternion([20, 35, 10]).toArray() });
+    const camera = makeCamera(), next = pose({ position: [4.2, 1.1, 1.7], quaternion: toQuaternion([25, 50, 15]).toArray() });
+    const reference = alignPhone(start, camera)(next);
+    for (const gain of [1, 5, 10]) {
+      const map = alignPhone(start, camera, gain), scaled = map(next);
+      expect(map(start).position).toEqual(camera.position);
+      const expected = new Vector3(...reference.position).sub(new Vector3(...camera.position)).multiplyScalar(gain).add(new Vector3(...camera.position));
+      expect(new Vector3(...scaled.position).distanceTo(expected)).toBeLessThan(1e-8);
+      expect(scaled.quaternion).toEqual(reference.quaternion);
+    }
+    for (const gain of [0, 11, NaN, Infinity]) expect(() => alignPhone(start, camera, gain)).toThrow(/sensitivity/);
+  });
+  it('reanchors a new sensitivity at the held view without changing position or orientation', () => {
+    const start = pose(), moved = pose({ position: [0, 0, -.2], quaternion: toQuaternion([0, 25, 0]).toArray() });
+    const held = alignPhone(start, makeCamera(), 5)(moved);
+    const map = alignPhone(moved, { position: held.position, rotation: fromQuaternion(new Quaternion(...held.quaternion)) }, 10);
+    expect(map(moved).position).toEqual(held.position);
+    expect(new Quaternion(...map(moved).quaternion).angleTo(new Quaternion(...held.quaternion))).toBeLessThan(1e-7);
+    const next = map({ ...moved, position: [0, 0, -.3] });
+    expect(new Vector3(...next.position).distanceTo(new Vector3(...held.position))).toBeCloseTo(1);
+  });
+  it('validates sensitivity and explicit pause/resume messages without breaking legacy state', () => {
+    for (const action of ['pause', 'resume']) expect(phoneMessageSchema.safeParse({ type: 'control', action }).success).toBe(true);
+    expect(phoneMessageSchema.safeParse({ type: 'settings', translationScale: 5.5 }).success).toBe(true);
+    for (const value of [0, 11, NaN, Infinity, '5']) {
+      expect(phoneMessageSchema.safeParse({ type: 'settings', translationScale: value }).success).toBe(false);
+      expect(phoneStateSchema.safeParse({ aligned: true, recording: false, translationScale: value }).success).toBe(false);
+    }
+    expect(phoneStateSchema.parse({ aligned: true, recording: false })).toEqual({ aligned: true, recording: false });
+    expect(phoneStateSchema.safeParse({ aligned: true, recording: true, paused: true, translationScale: 5 }).success).toBe(true);
+  });
   it('aligns the starting phone pose without a jump and retains metric translation and rotation', () => {
     const start = pose({ position: [4, 1, 2], quaternion: toQuaternion([0, 35, 0]).toArray() });
     const camera = makeCamera(), map = alignPhone(start, camera);
