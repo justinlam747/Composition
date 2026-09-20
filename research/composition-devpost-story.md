@@ -22,9 +22,14 @@ Composition is an agentic videography tool. Gemini Live provides conversational 
 
 **Solo development with Codex**
 
-Codex made the scope manageable for one developer. Local repository access, terminal commands, browser research, MCP tools, and Git diff inspection kept implementation and review in one workspace.
+Codex made Composition manageable as a solo build by connecting repository access, terminal execution, browser research, MCP tools, and Git diff inspection in one development environment.
 
-The less visible features mattered: `AGENTS.md` carried project instructions, a reusable skill required verification and commits, and interactive steering let me refine requirements during ongoing work. Codex also helped turn implementation lessons into persistent notes, including preserving rotation paths, rejecting stale proposals, and keeping interrupted generation requests recoverable. I could return to the reasoning behind a fix as the project evolved.
+The most useful features were the ones that made the development process repeatable:
+
+- **Project instructions and reusable skills.** `AGENTS.md` defined the repository's validation commands, while a separate `SKILL.md` workflow required scoped checks, diff inspection, and a commit for each completed change.
+- **Interactive steering.** I could refine requirements during ongoing work while keeping the conversation's implementation context.
+- **Persistent implementation notes.** Codex helped document rotation continuity, stale Gemini proposals, and recoverable generation requests, so later work could build on previous debugging.
+- **Tool use grounded in the repository.** Codex could connect an architectural claim to the actual renderer, relay, or provider implementation, then make and review the corresponding edit.
 
 ## Challenges we ran into
 
@@ -49,8 +54,10 @@ My next development pass focuses on:
 
 - **ElevenLabs audio:** generate audio for the finished output and combine it with the video through FFmpeg.
 - **Codex cloud sandboxes:** compare Gemini appearance-conditioning approaches in isolated environments using the same composition.
-- **Parallel agents and worktrees:** separate handheld transport, generation reliability, and UI review into independent tasks and checkouts.
-- **Overnight automations:** schedule rotation, tracking-loss, and export regression checks, then review results in the morning.
+- **Task forks, parallel agents, and worktree handoff:** branch an investigation with its conversation context, give independent implementation tasks separate checkouts, and bring a task and its code back to the local checkout for integration.
+- **Browser annotations and inline review:** point Codex at specific timeline or director-panel elements, reproduce browser interactions, and attach code feedback to exact diff lines.
+- **Overnight automations backed by skills:** package rotation, tracking-loss, and export checks into a repeatable workflow, schedule it, and review failures in the morning.
+- **Remote control from my phone:** steer development tasks and inspect diffs while away from the desktop during handheld testing.
 
 ## Built with
 
@@ -63,6 +70,10 @@ Gemini, Gemini Live, OpenAI Codex, Three.js, React, TypeScript, Node.js, ARKit, 
 The current repository implements **Seedance via fal**, not Veo. The draft reflects that implementation. Capture rates are code settings; device performance and generative fidelity are not presented as measured results.
 
 The author clarified that ElevenLabs and the proposed cloud/overnight experiments have not yet been completed. They appear as planned work. `AGENTS.md` supplies project instructions; reusable skills are defined separately in `SKILL.md`.
+
+The description emphasizes Codex's integrated workflow without claiming that skills, MCP, agents, or worktrees are exclusive to Codex. Official product documentation establishes feature availability, not competitor-wide exclusivity. Task forks, worktree handoff, browser annotations, inline review, and phone-based Remote control are proposed next steps here, not claims of completed use.
+
+[Worktree handoff](https://learn.chatgpt.com/docs/environments/git-worktrees) moves a task and its code between a managed worktree and the local checkout; a conversation fork is a separate operation that preserves conversation history. [OpenAI's Remote workflow guide](https://developers.openai.com/blog/mastering-codex-remote-for-engineering) documents forks, steering, side chats, durable goals, and phone-based review. [Browser tooling](https://learn.chatgpt.com/docs/browser) supports page annotations and interactions, while [code review](https://learn.chatgpt.com/docs/code-review) supports feedback on exact diff lines. These are distinct from the repository-backed cloud containers described below.
 
 The specific live Gemini proposal and two-second/19-track motion result are recorded in [the Director implementation notes](C:/Users/Justin/comp/plans/gemini-director-integration.md). Those notes distinguish limited smoke checks from full live microphone acceptance. [Implementation lessons](C:/Users/Justin/comp/tasks/lessons.md) distinguish local/browser checks with mocked providers from paid end-to-end video acceptance.
 
