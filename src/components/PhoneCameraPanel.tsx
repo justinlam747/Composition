@@ -3,6 +3,7 @@ import { Circle, MoreHorizontal, Pause, Play, Smartphone, Square, X } from 'luci
 import { phoneCamera, usePhoneCamera } from '../scene/phoneCamera';
 import { latencyPercentile } from '../core/phoneLatency';
 import DropdownMenu from './DropdownMenu';
+import PhonePairingCard from './PhonePairingCard';
 
 export default function PhoneCameraPanel({ onClose }: { onClose: () => void }) {
   const phone = usePhoneCamera();
@@ -36,7 +37,7 @@ export default function PhoneCameraPanel({ onClose }: { onClose: () => void }) {
     <p className="panel-copy">Use your iPhone to move through the shot. Your subject stays in place while you walk closer, pull back, or pan.</p>
     {enabled === false && <p className="inline-error">The phone bridge is offline. Follow the <a href="/phone-setup.html" target="_blank" rel="noreferrer">setup guide</a> to start it and install the iPhone companion.</p>}
     {!phone.pairing ? <button className="button primary" disabled={!enabled} onClick={() => void phoneCamera.pair()}>Pair iPhone</button> : <>
-      <div className="phone-pairing"><span className="field-label">Computer address</span>{phone.pairing.addresses.length ? phone.pairing.addresses.map(address => <p key={address}>{address}</p>) : <p>Connect this computer to Wi-Fi first.</p>}<span className="field-label">Pairing code</span><strong>{phone.pairing.code}</strong><p className="panel-copy small-copy">Use the same Wi-Fi network. The code expires after 10 minutes if unused.</p></div>
+      <PhonePairingCard pairing={phone.pairing} connected={phone.connected} onRenew={() => void phoneCamera.pair()} />
       <p className="phone-tracking" role="status"><span className={phone.tracking === 'normal' ? 'saved-dot' : ''} />{phone.connected ? phone.tracking === 'normal' ? 'Tracking ready' : 'Finding the room…' : 'Waiting for iPhone'}</p>
       <button className="button secondary" disabled={phone.tracking !== 'normal' || phone.recording} onClick={() => void phoneCamera.align()}>Set starting pose</button>
       <p className="panel-copy small-copy">Frame your starting view, hold the phone comfortably, then set its starting pose.</p>

@@ -9,7 +9,7 @@
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSRequiresIPhoneOS</key><true/>
-  <key>NSCameraUsageDescription</key><string>Track this phone's movement to direct your virtual camera. Camera images stay on the phone.</string>
+  <key>NSCameraUsageDescription</key><string>Scan your computer's pairing QR code and track this phone's movement to direct your virtual camera. Camera images stay on the phone.</string>
   <key>NSLocalNetworkUsageDescription</key><string>Send camera position and orientation to your computer and receive the virtual shot preview.</string>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
   <key>UIRequiredDeviceCapabilities</key><array><string>arkit</string></array>
