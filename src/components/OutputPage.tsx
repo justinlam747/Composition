@@ -139,8 +139,6 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
           {showBaseline && <img className="output-baseline-preview" src={assetUrl(baseline!)} alt="Selected video baseline" />}
           {generation ? <video hidden={showBaseline || step === 3 && !!output} key={generation.guideAssetId} aria-label="Guide preview" src={assetUrl(generation.guideAssetId)} controls playsInline preload="auto" onLoadedData={e => { setReady(true); setGuideDuration(e.currentTarget.duration); }} onError={() => { setReady(false); setError('Preview unavailable. Check the connection and create a new preview.'); }} /> : <div className="output-preview-empty"><span className="output-preview-icon"><Play size={26} strokeWidth={1.3} /></span><strong>Composition preview</strong><p>Create a preview to get started.</p></div>}
           {step === 3 && output && <video key={output} aria-label="Generated video" src={assetUrl(output)} controls playsInline />}
-          <div className="output-preview-caption"><Film size={14} /><p>{step === 3 && output ? 'Seedance output' : showBaseline ? 'Chosen look · Video follows your composition’s motion' : s.project.camera ? 'Scene camera · Includes camera motion' : 'Current editor framing'}</p></div>
-          {generation && <a className="text-link output-guide-download" href={assetUrl(generation.guideAssetId, true)} download><Download size={14} />Download composition MP4</a>}
         </section>
         </div>
         <section className="output-step-content" aria-labelledby="output-step-title">
@@ -160,6 +158,7 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
           </>}
           {step === 2 && <>
             <OutputPromptField target="video" title={<span className="field-label">Direction</span>} value={prompt} onChange={updateDirection} configured={!!capabilities?.gemini} disabled={pending || !!output || !!stale} onBusyChange={setPromptBusy} />
+            {generation && <OutputImages configured={!!capabilities?.gemini} disabled={busy || pending || !!output || !!stale || promptBusy} prompt={prompt} continueDisabled={!canReviewGeneration} onContinue={() => setStep(3)} onBusyChange={setImageBusy} />}
             <div className="output-references"><h3>Video references <span>{references.length} / 9</span></h3>{references.length > 0 && <div className="reference-strip">{references.map((id, i) => <div key={id}><img src={assetUrl(id)} alt={`Video reference ${i + 1}`} /><button aria-label={`Remove video reference ${i + 1}`} disabled={busy || pending || !!output || imageBusy} onClick={() => { const next = excludeVideoReference(studio.get().project, id); if (next) { studio.generation(next); void api.saveProject(studio.get().project).catch(cause => setError(cause.message)); } }}><X size={13} /></button></div>)}</div>}</div>
             {references.length > 9 && <p className="inline-error">Remove reference images to use nine or fewer.</p>}
             {staleBaseline && <p className="inline-error">Choose a baseline from the current preview before continuing.</p>}
@@ -188,7 +187,6 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
           {error && <p role="alert" className="inline-error">{error}</p>}
           {connectionError ? <div className="output-attention" role="alert"><p>{connectionError}</p><button className="button secondary" onClick={() => setConnectionVersion(value => value + 1)}>Retry connection</button></div> : !capabilities && <p className="output-note" role="status">Checking output connection…</p>}
         </section>
-        {generation && step === 2 && <OutputImages configured={!!capabilities?.gemini} disabled={busy || pending || !!output || !!stale || promptBusy} prompt={prompt} continueDisabled={!canReviewGeneration} onContinue={() => setStep(3)} onBusyChange={setImageBusy} />}
       </div>
     </main>
   </div>;

@@ -114,7 +114,7 @@ test('generates and downloads images in output, selects video references, and ke
   expect(colors.accent).toBe(colors.text);
   const direction = page.getByRole('textbox', { name: 'Video instructions', exact: true });
   await direction.fill('A sunlit room with oak furniture');
-  await expect(page.locator('.output-layout > .output-images')).toBeVisible();
+  await expect(page.locator('.output-step-content > .output-images')).toBeVisible();
   await expect(page.locator('.output-direction-actions')).toContainText('Upload images');
   await expect(page.locator('.output-direction-actions')).toContainText('Continue');
   await page.getByRole('button', { name: 'Generate images', exact: true }).click();
