@@ -1,66 +1,53 @@
 # Composition — Devpost story draft
 
-Editorial note: This draft follows the team's latest description of the project. It uses **Veo** as requested; the local video provider currently names **Seedance**, so the model name needs reconciliation before publication. No measured latency, device-validation result, or exact generative motion fidelity is claimed here.
-
-**Tagline:** An agentic videography tool. Film with your phone, direct with your voice, and turn your composition into AI-generated video.
+**Tagline:** Agentic videography: film with your phone, direct with your voice, generate from your composition.
 
 ## Inspiration
 
-Filmmaking is physical. You find a shot by moving closer to a subject, changing your angle, and discovering what works through the camera. We wanted to keep that freedom in AI video creation.
-
-With a text prompt, those decisions have to be described before you can see how they feel. We wanted a workflow where creators could compose a scene, move through it, and direct the action through conversation.
-
-That became Composition: an agentic videography tool that combines a handheld virtual camera, a director you can speak to, and a generation pipeline built around the shot you compose.
+We wanted AI filmmaking to preserve the physical process of finding a shot: moving around a subject, choosing an angle, and directing its performance. Composition makes those decisions editable inputs to video generation.
 
 ## What it does
 
-Composition lets you stage and film a virtual scene, then use that composition to guide AI video generation.
-
-In **handheld mode**, your phone becomes a camera into the scene. Moving and rotating the phone changes the virtual camera's position and orientation, while a streamed view lets you see your framing. You can record that movement as an editable camera animation and return to it as part of your composition.
-
-The **agentic director** lets you change the scene through live voice. You can ask it to place objects or change character animations, keeping direction conversational as you develop the shot.
-
-The **generation pipeline** turns the composition into reusable generation blocks. These carry the shot's movement and staging into the generation workflow, so you can build on the composition you already made. Gemini generates imagery, and Veo generates video from the prepared inputs.
-
-The creative loop is simple: arrange the scene, direct the action, move the camera, and generate the shot.
+Composition combines a Three.js scene editor, phone-controlled camera capture, and a live voice director. Users place objects, direct character animation, and record camera movement. Reusable animation blocks preserve the authored motion; the composed scene becomes a guide for generated imagery and video.
 
 ## How we built it
 
-We built the scene editor with Three.js and TypeScript. The composition stores scene elements and animation over time, including recorded camera movement. Keeping that motion editable lets a handheld take become part of a reusable project.
+**Handheld capture:** An ARKit companion sends position and quaternion orientation through a Node WebSocket relay. The editor receives pose events over SSE and returns rendered JPEG previews to the phone. A rigid alignment transform maps physical movement onto the starting scene camera. Recorded poses are resampled at 30 fps using linear position interpolation and quaternion SLERP, then converted into editable camera tracks with unwrapped rotations.
 
-Gemini powers the agentic director, connecting live voice instructions to supported changes in the scene, including object placement and character animation. We also use Gemini for image generation, with Veo handling video generation downstream.
+**Agentic direction:** Gemini receives structured scene state and a viewport image, then proposes typed actions for object placement, camera control, and animation. Gemini Live invokes the same proposal workflow through nonblocking tools; Hunyuan handles generated humanoid motion asynchronously. Zod validation, explicit approval, and scene-signature checks precede application through one atomic command path.
 
-Our handheld mode uses a **two-way streaming setup**. The editor renders the virtual scene and streams the view back to the phone over WebSockets. In the other direction, the phone sends position and orientation data, which drives the scene's virtual camera.
+**Reusable blocks:** Animation clips retain source keyframes and source-time windows. Splitting, retiming, and saving a block preserve its underlying motion data for reuse.
 
-This keeps scene rendering in the editor while the phone handles tracking and displays the shot. We could build a focused camera companion without duplicating the full renderer or recreating the editor on mobile.
-
-The generation workflow builds on the saved composition and its reusable blocks, carrying motion and visual direction forward into the inputs prepared for generation.
+**Generation:** The browser exports a 30 fps composition guide. Gemini generates appearance references from its first and last frames, conditioning the last image on the generated first image for visual continuity. Seedance via fal receives the guide video and selected image references. Scene signatures reject stale guides; persisted request IDs and input fingerprints prevent duplicate submissions of the same request.
 
 ## Challenges we ran into
 
-One of our hardest problems was balancing latency and preview quality in handheld mode. A detailed preview is useful for framing, but a delayed preview makes camera movement harder to judge. The phone's view needs to stay connected to the movement of your hands.
+Handheld latency was the main architectural tradeoff. We kept rendering in the desktop editor and decoupled tracking from preview delivery: poses are capped at 30 Hz, while 480×270 JPEG previews are capped at roughly 6 fps. Single in-flight sends and dropping previews under socket backpressure limit queue buildup.
 
-We considered adding another renderer on the phone or moving the experience into a full mobile editor. Both would introduce more rendering work and another environment to keep consistent with the main scene.
-
-Instead, we split the responsibilities: the editor renders the scene, the phone receives the view, and lightweight position and orientation messages travel back to control the camera. That gave us a focused tradeoff to manage—how much preview detail to transmit and how frequently to update it—while keeping one scene renderer responsible for the image.
-
-Another central design problem was keeping a filmed take useful after capture. We made camera movement part of the editable composition, so it can be replayed and reused in the generation workflow rather than existing only as a temporary live view.
+Agent execution also had to tolerate a changing scene. Proposals carry a scene signature and revision; if editing makes a result stale, it requires review before application. We also compacted the model-facing JSON schema to fit Gemini's constraints while retaining full application-side validation.
 
 ## Accomplishments that we're proud of
 
-- Connecting physical phone movement to a camera inside an editable virtual scene.
-- Giving creators a live voice director for object placement and character animation.
-- Bringing scene composition, recorded movement, generated imagery, and video generation into one workflow.
-- Making compositions reusable through generation blocks, so a shot can become a starting point for further work.
+- Representing handheld takes, manual animation, and generated motion as editable timeline blocks.
+- Connecting live voice direction to validated scene operations.
+- Separating motion guidance from appearance references in the generation pipeline.
 
 ## What we learned
 
-We learned that the feel of a creative tool depends on the feedback between an action and its visible result. For handheld filming, preview quality and responsiveness have to be considered together.
-
-We also learned the value of keeping creative decisions in an editable representation. When camera movement and scene animation remain part of the composition, generation can build on decisions the creator has already made.
+Separating tracking, preview rendering, and generation lets each run at an appropriate rate. Keeping motion as structured data makes physical capture reusable throughout the workflow.
 
 ## What's next for Composition
 
-We want to refine the handheld experience across different devices and network conditions, with particular attention to the balance between preview clarity and responsiveness.
+Measure handheld latency and tracking drift on devices, tune preview delivery across networks, and evaluate how consistently generated video follows the authored camera and character motion.
 
-We also want to evaluate and improve how faithfully generated video follows the movement and staging in each composition, and make it easier to reuse generation blocks across a sequence of shots.
+---
+
+## Implementation references — not submission copy
+
+The current repository implements **Seedance via fal**, not Veo. The draft reflects that implementation. Capture rates are code settings; device performance and generative fidelity are not presented as measured results.
+
+- Handheld transport and preview: [MotionController.swift](C:/Users/Justin/comp/ios/CompositionCamera/MotionController.swift), [phoneRelay.ts](C:/Users/Justin/comp/server/phoneRelay.ts), [phoneCamera.ts](C:/Users/Justin/comp/src/scene/phoneCamera.ts).
+- Alignment, interpolation, and rotation continuity: [phoneMotion.ts](C:/Users/Justin/comp/src/core/phoneMotion.ts).
+- Director actions, versioning, and compact schema: [director.ts](C:/Users/Justin/comp/src/core/director.ts), [server director](C:/Users/Justin/comp/server/director.ts), [directorSchema.ts](C:/Users/Justin/comp/server/directorSchema.ts), [directorLive.ts](C:/Users/Justin/comp/server/directorLive.ts).
+- Source-preserving animation blocks: [clips.ts](C:/Users/Justin/comp/src/core/clips.ts), [animationLibrary.ts](C:/Users/Justin/comp/src/core/animationLibrary.ts).
+- Guide capture, paired image references, and video jobs: [guideExport.ts](C:/Users/Justin/comp/src/scene/guideExport.ts), [imageJobs.ts](C:/Users/Justin/comp/server/imageJobs.ts), [providers.ts](C:/Users/Justin/comp/server/providers.ts), [jobs.ts](C:/Users/Justin/comp/server/jobs.ts).
