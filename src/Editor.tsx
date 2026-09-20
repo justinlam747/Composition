@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Bone, Check, Diamond, Download, Eye, Film, FolderOpen, HelpCircle, Mic, MoreHorizontal, Pencil, Redo2, RotateCcw, Save, Shapes, Sparkles, Trash2, Undo2, X } from 'lucide-react';
 import { importProject, openSavedProject, saveCurrentProject } from './core/projectSession';
 import ProjectNameDialog from './components/ProjectNameDialog';
-import { hasCharacter, hasTarget } from './core/project';
+import { CAMERA_ID, hasCharacter, hasTarget } from './core/project';
 import AIPanel from './components/AIPanel';
 import AnimationsPanel from './components/AnimationsPanel';
 import ObjectsPanel from './components/ObjectsPanel';
@@ -158,7 +158,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
     <main inert={s.phoneControl} className={`editor-main panel-${panel}${s.selectionActive && selectedObject && !s.playing && !s.preview ? ' has-selection' : ''}`}>
       <div className="stage-area"><Viewport active={active} />
         {s.preview && <div className="preview-banner">Suggestion preview · not applied</div>}
-        {s.selectionActive && selectedObject && !s.playing && !s.preview && <Inspector onClose={() => studio.patch({ selectionActive: false })} />}
+        {s.selectionActive && selectedObject && s.objectId !== CAMERA_ID && !s.playing && !s.preview && <Inspector onClose={() => studio.patch({ selectionActive: false })} />}
         {notice && <div className="notice"><Check size={15} /><span>{notice}</span><button aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={14} /></button></div>}
       </div>
       {panel === 'animate' && <TimelinePanel />}
