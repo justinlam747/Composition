@@ -1,3 +1,4 @@
+import { veoInputError } from '../core/videoModels';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Circle, Download, Film, Play, Shapes, Square, Triangle, X } from 'lucide-react';
 import { api, ApiError, assetUrl, type Capabilities, type Job } from '../core/api';
@@ -12,7 +13,7 @@ import OutputPromptField from './OutputPromptField';
 import { excludeVideoReference } from '../core/outputImages';
 import './output.css';
 
-const labels: Record<Job['status'], string> = { preparing: 'Uploading guide and references…', queued: 'Queued at Seedance…', running: 'Generating your video…', completed: 'Video ready', failed: 'Generation failed' };
+const labels: Record<Job['status'], string> = { preparing: 'Uploading guide and references…', queued: 'Queued with provider…', running: 'Generating your video…', completed: 'Video ready', failed: 'Generation failed' };
 const steps = ['Preview', 'Direction', 'Generate'];
 const stepIcons = [Square, Circle, Triangle];
 export default function OutputPage({ onBack }: { onBack: () => void }) {
@@ -89,7 +90,7 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
     } catch (err) {
       // A structured rejection before job creation is definitive. Network loss is ambiguous:
       // keep the persisted ID so reload/status checks and explicit retries cannot duplicate it.
-      if (err instanceof ApiError && (err.status >= 400 && err.status < 500 && err.status !== 409 || err.code === 'FAL_NOT_CONFIGURED')) {
+      if (err instanceof ApiError && (err.status >= 400 && err.status < 500 && err.status !== 409 || ['FAL_NOT_CONFIGURED', 'GEMINI_NOT_CONFIGURED'].includes(err.code))) {
         const current = studio.get().project;
         if (current.generation?.jobId === id) { const { jobId: _jobId, ...retained } = current.generation; studio.generation(retained); }
       }
@@ -110,9 +111,13 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
   const showBaseline = step > 1 && !!baseline && previewMode === 'baseline' && !(step === 3 && output);
   const currentGuide = !!generation && !stale && ready;
   const canContinue = currentGuide && reviewed;
+  const veo = generation?.videoModel === 'veo';
+  const modelName = veo ? 'Gemini Veo 3.1' : 'Seedance';
+  const veoIssue = veo ? veoInputError(s.project.duration, references, baseline, baseline ? generation?.imagePairs?.[baseline] : undefined) : undefined;
+  const videoConfigured = veo ? capabilities?.gemini : capabilities?.fal;
   const validDuration = Number.isInteger(s.project.duration) && s.project.duration >= 4 && s.project.duration <= 10;
   const canReviewGeneration = canContinue && !!prompt.trim() && references.length <= 9 && !imageBusy && !promptBusy && !staleBaseline;
-  const canGenerate = canReviewGeneration && !s.project.demo && validDuration && capabilities?.fal;
+  const canGenerate = canReviewGeneration && !s.project.demo && validDuration && videoConfigured && !veoIssue;
   const resultDuration = job?.duration ?? guideDuration;
   const previewDuration = step === 3 && output ? resultDuration : generation ? guideDuration : s.project.duration;
   function restart() {
@@ -127,7 +132,7 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
   return <div className="output-shell">
     <header className="output-header"><div className="brand"><Shapes size={19} /><span>composition</span><span className="output-divider">/</span><span className="output-header-label">Output</span></div><button className="button secondary" disabled={busy || s.exporting} onClick={onBack}><ArrowLeft size={15} />Back to editor</button></header>
     <main className="output-main" aria-label="Output workflow">
-      <div className="output-title"><div><h1>Output</h1><p>{s.project.name}</p></div><div className="output-services"><span className="service-label"><ServiceIcon service="gemini" />Gemini <small>Images</small></span><span className="service-label"><ServiceIcon service="fal" />fal <small>Video</small></span></div></div>
+      <div className="output-title"><div><h1>Output</h1><p>{s.project.name}</p></div><div className="output-services"><span className="service-label"><ServiceIcon service="gemini" />Gemini <small>Images &amp; video</small></span><span className="service-label"><ServiceIcon service="fal" />fal <small>Video</small></span></div></div>
       <nav aria-label="Output steps"><ol className="output-steps">{steps.map((label, index) => { const StepIcon = stepIcons[index]; return <li key={label}><button aria-current={step === index + 1 ? 'step' : undefined} disabled={busy || index === 1 && !canContinue || index === 2 && !jobId && !output && !canReviewGeneration} onClick={() => setStep(index + 1)}><span className="step-icon" aria-hidden="true"><StepIcon size={13} /></span><span>{label}</span></button></li>; })}</ol></nav>
       <div className="output-layout">
         <div className="output-preview-column"><section className="output-preview" aria-label="Composition preview">
@@ -163,17 +168,19 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
             <button className="text-link" onClick={() => setStep(1)}>Back to preview</button>
           </>}
           {step === 3 && <>
-            <div className="output-provider"><ServiceIcon service="bytedance" /><strong>Seedance</strong><span>via</span><ServiceIcon service="fal" /><span>fal</span></div>
+            <label className="field-label">Video model<select aria-label="Video model" value={generation?.videoModel ?? 'seedance'} disabled={busy || !!jobId || !!output} onChange={e => { if (generation) studio.generation({ ...generation, videoModel: e.target.value as 'seedance' | 'veo' }); }}><option value="seedance">Seedance via fal</option><option value="veo">Gemini Veo 3.1</option></select></label>
+            {veo && <p className="output-note">Veo uses your direction and images, with generated audio. The motion guide is not sent; describe movement and camera direction in your prompt.</p>}
             {stale && (jobId || output) && <p className="output-copy output-attention">This request uses an earlier version of your composition. Your request and any finished video stay available here.</p>}
-            <dl className="output-summary"><div><dt>Video</dt><dd>{jobId || output ? resultDuration ?? '—' : s.project.duration}s · 720p · 16:9</dd></div><div><dt>Audio</dt><dd>Off</dd></div><div><dt>References</dt><dd>{jobId ? job ? `${job.referenceAssetIds.length} images` : 'Checking…' : `${references.length} images`}</dd></div></dl>
+            <dl className="output-summary"><div><dt>Video</dt><dd>{jobId || output ? resultDuration ?? '—' : s.project.duration}s · 720p · 16:9</dd></div><div><dt>Audio</dt><dd>{veo ? 'Generated' : 'Off'}</dd></div><div><dt>References</dt><dd>{jobId ? job ? `${job.referenceAssetIds.length} images` : 'Checking…' : `${references.length} images`}</dd></div></dl>
             <OutputPromptField target="video" title={<span className="field-label">Direction</span>} value={prompt} onChange={updateDirection} configured={!!capabilities?.gemini} disabled={pending || !!output || !!stale} />
             {!jobId && !output && <>
               {!canContinue && <div className="output-attention"><p>Review a current preview before generating.</p><button className="button secondary" onClick={() => setStep(1)}>Review preview</button></div>}
               {s.project.demo && <div className="output-attention"><p>Turn off Demo mode to generate. Your animation stays intact.</p><button className="button secondary" onClick={studio.disableDemo}>Turn off Demo mode</button></div>}
-              {!validDuration && <p className="inline-error">Set the timeline to a whole duration of 4–10 seconds in the editor, then create a new preview.</p>}
-              {capabilities && !capabilities.fal && <p className="inline-error">Connect your fal account by setting FAL_KEY on the server, then restart it.</p>}
-              <button className="button primary wide" disabled={busy || !canGenerate} onClick={generate}><ServiceIcon service="fal" />Generate with Seedance</button>
-              <p className="output-note">Uses fal credits. Sends your motion guide{baseline ? ', chosen baseline' : ''} and references.</p>
+              {!veo && !validDuration && <p className="inline-error">Set the timeline to a whole duration of 4–10 seconds in the editor, then create a new preview.</p>}
+              {veoIssue && <p className="inline-error">{veoIssue}</p>}
+              {capabilities && !videoConfigured && <p className="inline-error">Set {veo ? 'GEMINI_API_KEY' : 'FAL_KEY'} on the server, then restart it.</p>}
+              <button className="button primary wide" disabled={busy || !canGenerate} onClick={generate}><ServiceIcon service={veo ? 'gemini' : 'fal'} />Generate with {modelName}</button>
+              <p className="output-note">{veo ? 'Uses Gemini API credits. Sends your direction and selected images.' : <>Uses fal credits. Sends your motion guide{baseline ? ', chosen baseline' : ''} and references.</>}</p>
             </>}
     {pending && !job && <section className="job-status" aria-live="polite"><strong>{missingJob ? 'Submission not confirmed' : 'Checking saved request…'}</strong>{missingJob && <><p className="panel-copy">The server has no record of this request yet. Retry with the saved ID to avoid creating a duplicate.</p><button className="button secondary" disabled={busy || !!stale || !generation?.instructions} onClick={() => submit(s.project, jobId!, generation!.instructions!)}>Retry same request</button>{stale && <p className="panel-copy">Undo scene changes to retry this guide. Status checks will continue.</p>}</>}</section>}
     {job && <section className="job-status" aria-label="Generation status" aria-live="polite"><strong>{labels[job.status]}</strong><small>Request {job.id.slice(0, 8)}</small>{job.error && <p className="inline-error">{job.error}</p>}{job.status === 'failed' && <button className="button secondary" onClick={restart}>Start another request</button>}</section>}

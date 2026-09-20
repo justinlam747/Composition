@@ -1,3 +1,4 @@
+import { submitVeo, pollVeo } from './veo';
 import { createFalClient } from '@fal-ai/client';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
@@ -118,6 +119,7 @@ Use generate_motion only for body performances on the primary humanoid ID humano
       return bytes;
     },
     async submit(job) {
+      if (job.model.startsWith('veo-')) return submitVeo(store, job, geminiKey);
       if (!falKey) throw new AppError(503, 'FAL_NOT_CONFIGURED', 'Live video is unavailable: configure FAL_KEY on the server.');
       async function upload(id: string) { const asset = await store.requireAsset(id); return fal.storage.upload(new Blob([new Uint8Array(await readFile(store.file('assets', id, 'bin')))], { type: asset.mimeType })); }
       const [guide, images] = await Promise.all([upload(job.guideAssetId), Promise.all(job.referenceAssetIds.map(upload))]);
@@ -128,6 +130,7 @@ Use generate_motion only for body performances on the primary humanoid ID humano
       return result.request_id;
     },
     async poll(job) {
+      if (job.model.startsWith('veo-')) return pollVeo(job, geminiKey);
       const status = await fal.queue.status(job.model, { requestId: job.requestId!, logs: false });
       if (status.status === 'IN_QUEUE') return { status: 'queued' };
       if (status.status === 'IN_PROGRESS') return { status: 'running' };

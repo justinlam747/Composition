@@ -32,6 +32,7 @@ export interface SceneObject {
 }
 export interface ImageRequest { id: string; prompt: string; guideAssetId?: string; count?: number; paired?: boolean; referenceAssetIds?: string[] }
 export interface Generation {
+  videoModel?: 'seedance' | 'veo';
   guideAssetId: string; sourceSignature: string; jobId?: string; outputAssetId?: string; instructions?: string;
   imageRequest?: ImageRequest; imageAssetIds?: string[]; referenceAssetIds?: string[];
   imageSources?: Record<string, string>; baselineAssetId?: string;
@@ -292,7 +293,7 @@ export function validateProject(input: unknown): Project {
     objects.set(o.id, o);
   }
   const generationImages = new Set(Array.isArray(p.generation?.imageAssetIds) ? p.generation.imageAssetIds : []);
-  if (p.generation && (!validId(p.generation.guideAssetId) || typeof p.generation.sourceSignature !== 'string' || p.generation.sourceSignature.length > 100 ||
+  if (p.generation && ((p.generation.videoModel !== undefined && !['seedance', 'veo'].includes(p.generation.videoModel)) || !validId(p.generation.guideAssetId) || typeof p.generation.sourceSignature !== 'string' || p.generation.sourceSignature.length > 100 ||
     (p.generation.jobId !== undefined && !validId(p.generation.jobId)) || (p.generation.outputAssetId !== undefined && !validId(p.generation.outputAssetId)) ||
     (p.generation.imageRequest !== undefined && (!p.generation.imageRequest || !validId(p.generation.imageRequest.id) || typeof p.generation.imageRequest.prompt !== 'string' || !p.generation.imageRequest.prompt.trim() || p.generation.imageRequest.prompt.length > 4000 ||
       (p.generation.imageRequest.guideAssetId !== undefined && !validId(p.generation.imageRequest.guideAssetId)) || (p.generation.imageRequest.count !== undefined && (!Number.isSafeInteger(p.generation.imageRequest.count) || p.generation.imageRequest.count < 1)) || (p.generation.imageRequest.referenceAssetIds !== undefined && (!Array.isArray(p.generation.imageRequest.referenceAssetIds) || !p.generation.imageRequest.referenceAssetIds.every(validId))) || (p.generation.imageRequest.paired !== undefined && (typeof p.generation.imageRequest.paired !== 'boolean' || p.generation.imageRequest.paired && !p.generation.imageRequest.guideAssetId)))) ||
