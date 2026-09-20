@@ -1,17 +1,30 @@
 import { createServer } from 'node:http';
 import { networkInterfaces } from 'node:os';
 import { randomBytes, randomInt } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { Express, Response } from 'express';
 import express from 'express';
-import { phoneMessageSchema, type PhoneEvent, type PhonePairing } from '../src/core/phoneProtocol';
+import { desktopSignalSchema, phoneMessageSchema, phoneStateSchema, type PhoneEvent, type PhonePairing } from '../src/core/phoneProtocol';
 import { AppError } from './storage';
 
 interface Session extends PhonePairing { phone?: WebSocket; viewers: Set<Response>; lastSeq: number; lastTime: number }
 export class PhoneRelay {
   private session?: Session;
-  private server = createServer((_req, res) => { res.writeHead(404).end(); });
-  private sockets = new WebSocketServer({ noServer: true, maxPayload: 2048, perMessageDeflate: false });
+  private server = createServer(async (req, res) => {
+    let url: URL;
+    try { url = new URL(req.url ?? '/', 'http://localhost'); }
+    catch { res.writeHead(400).end(); return; }
+    const session = this.session;
+    if (req.method !== 'GET' || url.pathname !== '/receiver' || req.headers.origin || !session || Date.now() > session.expiresAt || url.searchParams.get('code') !== session.code) {
+      res.writeHead(404).end(); return;
+    }
+    try {
+      const html = await readFile(new URL('../public/phone-receiver.html', import.meta.url));
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }).end(html);
+    } catch { res.writeHead(503).end(); }
+  });
+  private sockets = new WebSocketServer({ noServer: true, maxPayload: 70_000, perMessageDeflate: false });
   private timer?: ReturnType<typeof setInterval>;
   private port = 0;
   constructor() {
@@ -36,6 +49,7 @@ export class PhoneRelay {
           if (binary || ++count > 90 || session !== this.session) { phone.close(1008, 'Invalid stream'); return; }
           try {
             const message = phoneMessageSchema.parse(JSON.parse(data.toString()));
+            if (message.type !== 'signal' && data.toString().length > 4096) { phone.close(1008, 'Message too large'); return; }
             if (message.type === 'pose') {
               if (message.seq <= session.lastSeq || message.time <= session.lastTime) return;
               session.lastSeq = message.seq; session.lastTime = message.time;
@@ -95,10 +109,19 @@ export class PhoneRelay {
       if (Buffer.isBuffer(req.body) && phone?.readyState === WebSocket.OPEN && phone.bufferedAmount < 250_000) phone.send(req.body, { binary: true });
       res.sendStatus(204);
     });
+    app.post('/api/phone/:id/signal', express.json({ limit: '70kb' }), (req, res) => {
+      const phone = this.require(req.params.id).phone;
+      const parsed = desktopSignalSchema.safeParse(req.body);
+      if (!parsed.success) throw new AppError(400, 'INVALID_PHONE_SIGNAL', 'Invalid preview signaling message.');
+      if (phone?.readyState !== WebSocket.OPEN) throw new AppError(409, 'PHONE_DISCONNECTED', 'Reconnect the phone.');
+      if (phone.bufferedAmount > 250_000) throw new AppError(429, 'PHONE_BUSY', 'Phone connection is congested. Retry preview.');
+      phone.send(JSON.stringify(parsed.data)); res.sendStatus(204);
+    });
     app.post('/api/phone/:id/state', express.json({ limit: '1kb' }), (req, res) => {
       const phone = this.require(req.params.id).phone;
-      if (typeof req.body?.recording !== 'boolean' || typeof req.body?.aligned !== 'boolean') throw new AppError(400, 'INVALID_PHONE_STATE', 'Invalid phone state.');
-      if (phone?.readyState === WebSocket.OPEN) phone.send(JSON.stringify({ type: 'state', recording: req.body.recording, aligned: req.body.aligned }));
+      const parsed = phoneStateSchema.safeParse(req.body);
+      if (!parsed.success) throw new AppError(400, 'INVALID_PHONE_STATE', 'Invalid phone state.');
+      if (phone?.readyState === WebSocket.OPEN) phone.send(JSON.stringify({ type: 'state', ...parsed.data }));
       res.sendStatus(204);
     });
     app.delete('/api/phone/:id', (req, res) => { this.require(req.params.id); this.end(); res.sendStatus(204); });

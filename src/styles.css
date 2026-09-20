@@ -368,6 +368,8 @@ textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .panel-section h3 small { font-weight: 500; color: var(--muted); margin-left: 8px; }
 .phone-pairing { display: flex; flex-direction: column; gap: 8px; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--bg); font-size: 13px; }
 .phone-pairing strong { font-size: 28px; letter-spacing: 4px; font-variant-numeric: tabular-nums; }
+.phone-pairing-qr { display: flex; justify-content: center; background: #fff; border-radius: 12px; padding: 4px; }
+.phone-pairing-qr svg { max-width: 100%; height: auto; }
 .phone-tracking { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .saved-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--mint); flex-shrink: 0; }
 .concept-image { width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--bg); border-radius: 16px; }
@@ -742,6 +744,20 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 .project-card-menu .dropdown-trigger { width: 34px; min-height: 30px; padding: 0; border-radius: 8px; }
 .delete-project-button { background: var(--red); color: var(--panel); }
 .delete-project-button:hover { opacity: .9; }
+.phone-latency { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.phone-latency select { width: 100%; margin: 6px 0 12px; padding: 8px; }
+.phone-latency dl { font-size: 12px; font-variant-numeric: tabular-nums; }
+.phone-latency dt { margin-top: 8px; opacity: .7; }
+.phone-latency dd { margin: 2px 0 0; }
+.phone-latency p { overflow-wrap: anywhere; }
+.phone-panel-actions { display: flex; align-items: center; gap: 4px; }
+.phone-options .dropdown-trigger { width: 32px; min-height: 32px; padding: 0; border-radius: 10px; }
+.phone-record { background: var(--red); color: var(--panel); }
+.phone-record:hover { opacity: .85; }
+.phone-sensitivity { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; font-size: 12px; }
+.phone-sensitivity > span { display: flex; align-items: center; justify-content: space-between; }
+.phone-sensitivity input { width: 100%; accent-color: var(--text); }
+.phone-sensitivity small { color: var(--muted); line-height: 1.5; }
 .project-dialog p strong { overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: no-preference) {
   .dropdown-menu { animation: arrive .16s cubic-bezier(.22, 1, .36, 1); }
