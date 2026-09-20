@@ -1,10 +1,11 @@
+import type { PromptTarget, RefinedPrompt } from './outputPrompts';
 import type { AnimationAsset, ImageRequest, Project, SceneObject } from './project';
 import type { ObjectSpec, Proposal, ProposalKind } from './proposals';
 import type { ProjectPreview } from './projectPreview';
-export interface Asset { id: string; mimeType: string; size: number; role: 'reference' | 'guide' | 'output'; createdAt: string; duration?: number; width?: number; height?: number; firstFrameAssetId?: string }
+export interface Asset { id: string; mimeType: string; size: number; role: 'reference' | 'guide' | 'output'; createdAt: string; duration?: number; width?: number; height?: number; firstFrameAssetId?: string; lastFrameAssetId?: string }
 export interface Job { id: string; projectId: string; status: 'preparing' | 'queued' | 'running' | 'completed' | 'failed'; mode: 'live'; guideAssetId: string; referenceAssetIds: string[]; prompt: string; duration: number; resolution: '720p'; createdAt: string; outputAssetId?: string; error?: string; requestId?: string }
 export interface SavedObject { id: string; object: ObjectSpec; createdAt: string }
-export interface ImageJob extends ImageRequest { projectId: string; status: 'running' | 'completed' | 'failed'; createdAt: string; assetId?: string; assetIds?: string[]; error?: string }
+export interface ImageJob extends ImageRequest { projectId: string; status: 'running' | 'completed' | 'failed'; createdAt: string; assetId?: string; assetIds?: string[]; imagePairs?: Record<string, string>; error?: string }
 export interface MotionJob { id: string; projectId: string; status: 'running' | 'completed' | 'failed'; createdAt: string; prompt: string; duration: number; model: 'fal-ai/hunyuan-motion'; baseSignature: string; animation?: AnimationAsset; error?: string }
 export interface Capabilities { gemini: boolean; fal: boolean; hunyuanMotion: boolean; videoExport: boolean }
 export interface ProjectSummary { id: string; name: string; updatedAt: string; duration: number; objectCount: number; hasMotion: boolean; preview?: ProjectPreview }
@@ -29,7 +30,8 @@ export const api = {
   objects: () => request<SavedObject[]>('/objects'),
   generate: (project: Project, prompt: string, id: string) => request<Job>('/jobs', json({ project, prompt, id, mode: 'live' })),
   job: (id: string) => request<Job>(`/jobs/${id}`),
-  guideFrame: (id: string) => request<Asset>(`/assets/${id}/first-frame`),
+  guideFrame: (id: string, frame: 'first' | 'last' = 'first') => request<Asset>(`/assets/${id}/${frame}-frame`),
+  refinePrompt: (project: Project, target: PromptTarget, prompt: string, previous?: string, signal?: AbortSignal) => request<RefinedPrompt>('/output-prompts', { ...json({ project, target, prompt, previous }), signal }),
   generateImage: (projectId: string, imageRequest: ImageRequest) => request<ImageJob>('/image-jobs', json({ projectId, ...imageRequest })),
   imageJob: (id: string) => request<ImageJob>(`/image-jobs/${id}`),
   generateMotion: (project: Project, prompt: string, duration: number, id: string, signal?: AbortSignal) => request<MotionJob>('/motion-jobs', { ...json({ project, prompt, duration, id }), ...(signal ? { signal } : {}) }),

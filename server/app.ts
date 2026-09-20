@@ -5,13 +5,14 @@ import { parseProject, uid, validId } from '../src/core/project';
 import { applyProposal, objectSpecSchema } from '../src/core/proposals';
 import { projectPreview } from '../src/core/projectPreview';
 import { FileStore, AppError, type ProjectRecord } from './storage';
-import { firstFrame, imageMime, saveGuide, videoExportAvailable } from './media';
+import { firstFrame, lastFrame, imageMime, saveGuide, videoExportAvailable } from './media';
 import { liveProviders, type Providers } from './providers';
 import { Jobs } from './jobs';
 import { ImageJobs } from './imageJobs';
 import { MotionJobs } from './motionJobs';
 import type { ImageJob, SavedObject } from '../src/core/api';
 import type { PhoneRelay } from './phoneRelay';
+import { promptTargetSchema } from '../src/core/outputPrompts';
 
 export async function createApp(options: { dataDir?: string; providers?: (store: FileStore) => Providers; phone?: PhoneRelay } = {}) {
   const store = new FileStore(path.resolve(options.dataDir ?? process.env.DATA_DIR ?? 'data/studio')); await store.init();
@@ -44,7 +45,12 @@ export async function createApp(options: { dataDir?: string; providers?: (store:
   });
   app.get('/api/assets/:id', async (req, res) => res.json(await store.requireAsset(req.params.id)));
   app.get('/api/assets/:id/first-frame', async (req, res) => res.json(await firstFrame(store, req.params.id)));
+  app.get('/api/assets/:id/last-frame', async (req, res) => res.json(await lastFrame(store, req.params.id)));
   app.use(express.json({ limit: '8mb' }));
+  app.post('/api/output-prompts', async (req, res) => {
+    const input = z.object({ project: z.unknown(), target: promptTargetSchema, prompt: z.string().trim().min(1).max(4000), previous: z.string().max(4000).optional() }).strict().parse(req.body);
+    res.json(await providers.refinePrompt(parseProject(JSON.stringify(input.project)), input.target, input.prompt, input.previous));
+  });
   app.get('/api/projects', async (_req, res) => res.json((await store.list<ProjectRecord>('projects')).map(({ project, updatedAt }) => ({
     id: project.id, name: project.name, updatedAt, duration: project.duration,
     objectCount: project.objects.filter(object => !object.hidden).length,
@@ -80,7 +86,7 @@ export async function createApp(options: { dataDir?: string; providers?: (store:
   });
   app.get('/api/jobs/:id', async (req, res) => res.json(await jobs.refresh(req.params.id)));
   app.post('/api/image-jobs', async (req, res) => {
-    const { projectId, ...input } = z.object({ id: z.string().refine(validId), projectId: z.string().refine(validId), prompt: z.string().trim().min(1).max(4000), guideAssetId: z.string().refine(validId).optional(), count: z.union([z.literal(1), z.literal(3)]).optional() }).strict().parse(req.body);
+    const { projectId, ...input } = z.object({ id: z.string().refine(validId), projectId: z.string().refine(validId), prompt: z.string().trim().min(1).max(4000), guideAssetId: z.string().refine(validId).optional(), count: z.union([z.literal(1), z.literal(3)]).optional(), paired: z.boolean().optional() }).strict().parse(req.body);
     res.status(202).json(await imageJobs.create(projectId, input));
   });
   app.get('/api/image-jobs/:id', async (req, res) => res.json(await store.get<ImageJob>('image-jobs', req.params.id)));

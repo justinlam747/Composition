@@ -1,0 +1,20 @@
+.output-prompt-field { display: grid; gap: 12px; }
+.output-prompt-field .output-section-title { margin: 0; flex-wrap: wrap; gap: 10px; }
+.output-prompt-field .output-prompt-generate { font-size: 12px; padding: 9px 12px; min-height: 36px; }
+.output-prompt-field .output-prompt-generate svg { width: 15px; height: 15px; }
+.output-prompt-draft { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--raised); }
+.output-prompt-draft .output-note { margin: 0; }
+.output-prompt-draft details { font-size: 12px; }
+.output-prompt-draft summary { cursor: pointer; }
+.output-prompt-draft dl { display: grid; gap: 8px; }
+.output-prompt-draft dt { font-weight: 600; text-transform: capitalize; }
+.output-prompt-draft dd { margin: 2px 0 0; }
+.output-frame-sources { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.output-frame-sources figure { margin: 0; min-width: 0; }
+.output-frame-sources img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); }
+.output-frame-sources figcaption { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.output-image-grid figcaption > div { flex: 1; min-width: 0; }
+.output-image-grid figcaption > button { flex: 0 0 auto; min-width: 32px; min-height: 32px; display: grid; place-items: center; }
+.output-image-grid figcaption span { font-size: 11px; color: var(--muted); }
+.output-references .reference-strip > div { position: relative; flex: 0 0 auto; }
+.output-references .reference-strip > div > button { position: absolute; top: 2px; right: 2px; display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 50%; background: var(--panel); color: var(--text); }

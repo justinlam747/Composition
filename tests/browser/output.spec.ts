@@ -3,10 +3,15 @@ import { expect, test, type Page } from '@playwright/test';
 async function scene(page: Page) {
   return page.evaluate(async () => { const path = '/src/core/store.ts'; return structuredClone((await import(path)).studio.get().project); });
 }
+async function clickOutput(page: Page) {
+  const output = page.getByRole('button', { name: 'Output', exact: true });
+  if (!await output.isVisible()) await page.getByRole('button', { name: 'Scene menu' }).click();
+  await output.click();
+}
 async function openOutput(page: Page) {
   await page.goto('/#editor');
   await expect(page.getByRole('region', { name: 'Scene editor', exact: true })).toHaveAttribute('aria-busy', 'false');
-  await page.getByRole('button', { name: 'Output', exact: true }).click();
+  await clickOutput(page);
   await expect(page).toHaveURL(/#output$/);
 }
 async function createPreview(page: Page) {
@@ -30,7 +35,7 @@ test('Output leaves the editor, gates the steps, and preserves the scene and fra
   expect(await scene(page)).toEqual(before);
   await page.setViewportSize({ width: 390, height: 844 });
   const output = page.getByRole('button', { name: 'Output', exact: true });
-  await expect(output).toBeInViewport(); await output.click();
+  await clickOutput(page);
   await expect(page.getByRole('button', { name: 'Create preview', exact: true })).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/output-mobile.png', fullPage: true });
@@ -57,7 +62,7 @@ test('preview and direction survive navigation and reload, while scene edits req
   await page.getByRole('button', { name: 'Back to editor' }).click();
   await page.getByRole('button', { name: 'Objects', exact: true }).click();
   await page.getByRole('button', { name: 'Add box', exact: true }).click();
-  await page.getByRole('button', { name: 'Output', exact: true }).click();
+  await clickOutput(page);
   await expect(page.getByText('Your composition has changed.', { exact: false })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue to video direction' })).toBeDisabled();
   expect((await scene(page)).generation.guideAssetId).toBe(guide);
@@ -90,11 +95,11 @@ test('too many references cannot bypass video direction through the step navigat
   }));
   expect(new Set(references).size).toBe(10);
   await page.evaluate(async ids => { const path = '/src/core/store.ts', corePath = '/src/core/project.ts'; const { studio } = await import(path); const { makeObject } = await import(corePath); const project = structuredClone(studio.get().project); project.objects[0].referenceAssetIds = ids.slice(0, 5); project.objects.push({ ...makeObject('box'), referenceAssetIds: ids.slice(5) }); studio.import(JSON.stringify(project)); }, references);
-  await page.getByRole('button', { name: 'Output', exact: true }).click(); await createPreview(page);
+  await clickOutput(page); await createPreview(page);
   await page.getByRole('checkbox', { name: 'I’ve reviewed this composition' }).check();
   await page.getByRole('button', { name: 'Continue to video direction' }).click();
   await page.getByRole('textbox', { name: 'Video instructions' }).fill('Natural light');
-  await expect(page.getByText('reduce the reference images to nine or fewer', { exact: false })).toBeVisible();
+  await expect(page.getByText('Remove reference images to use nine or fewer', { exact: false })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue to generation' })).toBeDisabled();
   await expect(page.getByRole('button', { name: '3 Generate' })).toBeDisabled();
 });
@@ -108,14 +113,16 @@ test('generates and downloads images in output, selects video references, and ke
   const colors = await page.locator('.output-shell').evaluate(node => { const style = getComputedStyle(node); return { accent: style.getPropertyValue('--accent').trim(), text: style.getPropertyValue('--text').trim() }; });
   expect(colors.accent).toBe(colors.text);
   await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('A sunlit room with oak furniture');
-  await page.getByRole('button', { name: 'Generate image', exact: true }).click();
-  await expect(page.getByRole('img', { name: 'Generated image 1', exact: true })).toBeVisible({ timeout: 15000 });
+  await page.getByRole('button', { name: 'Generate images', exact: true }).click();
+  await expect(page.getByRole('img', { name: 'Image 1 - First frame', exact: true })).toBeVisible({ timeout: 15000 });
   const generated = await scene(page), assetId = generated.generation.imageAssetIds[0];
   expect(generated.objects).toHaveLength(1);
   const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download image 1' }).click();
   expect((await download).suggestedFilename()).toMatch(/\.png$/);
-  await page.getByRole('checkbox', { name: 'Use for video' }).check();
-  expect((await scene(page)).generation.referenceAssetIds).toEqual([assetId]);
+  await page.getByRole('button', { name: 'Use image 1 as baseline' }).click();
+  expect((await scene(page)).generation.baselineAssetId).toBe(assetId);
+  const pairIds = (await scene(page)).generation.imageAssetIds;
+  expect(pairIds).toHaveLength(2);
   await page.getByRole('textbox', { name: 'Video instructions' }).fill('Use the room reference and follow the composition');
   await expect(page.getByRole('button', { name: 'Continue to generation' })).toBeEnabled();
   await page.screenshot({ path: 'test-results/output-images-desktop.png', fullPage: true });
@@ -125,16 +132,19 @@ test('generates and downloads images in output, selects video references, and ke
   await page.getByRole('button', { name: 'Back to preview' }).click();
   await page.getByRole('button', { name: 'Create new preview' }).click();
   await expect(page.getByRole('checkbox', { name: 'I’ve reviewed this composition' })).toBeEnabled({ timeout: 30000 });
-  expect((await scene(page)).generation.imageAssetIds).toEqual([assetId]);
-  expect((await scene(page)).generation.referenceAssetIds).toEqual([assetId]);
+  expect((await scene(page)).generation.imageAssetIds).toEqual(pairIds);
+  const afterExport = await scene(page);
+  expect(afterExport.generation.baselineAssetId).toBe(afterExport.generation.guideAssetId === generated.generation.guideAssetId ? assetId : undefined);
   await page.getByRole('checkbox', { name: 'I’ve reviewed this composition' }).check();
   await page.getByRole('button', { name: 'Continue to video direction' }).click();
+  const baselineButton = page.getByRole('button', { name: 'Use image 1 as baseline' });
+  if (await baselineButton.isEnabled() && await baselineButton.getAttribute('aria-pressed') !== 'true') await baselineButton.click();
   await page.getByRole('button', { name: 'Continue to generation' }).click();
   const sending = page.waitForRequest(request => request.url().endsWith('/api/jobs') && request.method() === 'POST');
   await page.getByRole('button', { name: 'Generate with Seedance' }).click();
-  expect((await sending).postDataJSON().project.generation.referenceAssetIds).toEqual([assetId]);
+  expect((await sending).postDataJSON().project.generation.imageAssetIds).toEqual(pairIds);
   await expect(page.getByRole('link', { name: 'Download video', exact: true })).toBeVisible({ timeout: 15000 });
-  expect((await scene(page)).generation.imageAssetIds).toEqual([assetId]);
+  expect((await scene(page)).generation.imageAssetIds).toEqual(pairIds);
 });
 
 test('an image request survives a lost response and reload without another provider submission', async ({ page }) => {
@@ -144,16 +154,16 @@ test('an image request survives a lost response and reload without another provi
   const submissions: string[] = [];
   await page.route('**/api/image-jobs', async route => { submissions.push(route.request().postDataJSON().id); await route.fetch(); await route.abort('failed'); });
   await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('Image recovery test');
-  await page.getByRole('button', { name: 'Generate image', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate images', exact: true }).click();
   await expect.poll(() => submissions.length).toBe(1);
   const id = (await scene(page)).generation.imageRequest.id;
-  await expect(page.getByRole('img', { name: 'Generated image 1', exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('img', { name: 'Image 1 - First frame', exact: true })).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole('alert')).toBeHidden();
   await page.reload();
   await expect(page.getByRole('checkbox', { name: 'I’ve reviewed this composition' })).toBeEnabled();
   await page.getByRole('checkbox', { name: 'I’ve reviewed this composition' }).check();
   await page.getByRole('button', { name: 'Continue to video direction' }).click();
-  await expect(page.getByRole('img', { name: 'Generated image 1', exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('img', { name: 'Image 1 - First frame', exact: true })).toBeVisible({ timeout: 15000 });
   expect(submissions).toEqual([id]);
 });
 
@@ -163,12 +173,12 @@ test('image provider failures offer a deliberate new request and preserve the co
   await page.getByRole('button', { name: 'Continue to video direction' }).click();
   const before = await scene(page);
   await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('FAIL_IMAGE_TEST');
-  await page.getByRole('button', { name: 'Generate image', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate images', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Test image generation failed');
   await page.getByRole('button', { name: 'Start another image' }).click();
   await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('A new image');
-  await page.getByRole('button', { name: 'Generate image', exact: true }).click();
-  await expect(page.getByRole('img', { name: 'Generated image 1', exact: true })).toBeVisible({ timeout: 15000 });
+  await page.getByRole('button', { name: 'Generate images', exact: true }).click();
+  await expect(page.getByRole('img', { name: 'Image 1 - First frame', exact: true })).toBeVisible({ timeout: 15000 });
   expect((await scene(page)).objects).toEqual(before.objects);
   expect((await scene(page)).generation.guideAssetId).toBe(before.generation.guideAssetId);
 });
@@ -182,16 +192,83 @@ test('unsubmitted image requests and definitive rejections do not block video ou
   let submissions = 0;
   page.on('request', request => { if (request.url().endsWith('/api/image-jobs') && request.method() === 'POST') submissions++; });
   await page.route('**/api/projects/*', route => route.request().method() === 'PUT' ? route.fulfill({ status: 503, json: { error: { code: 'SAVE_FAILED', message: 'Project save failed' } } }) : route.continue());
-  await page.getByRole('button', { name: 'Generate image', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate images', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Project save failed');
   await expect(page.getByRole('button', { name: 'Continue to generation' })).toBeEnabled();
   expect((await scene(page)).generation.imageRequest).toBeUndefined();
   expect(submissions).toBe(0);
   await page.unroute('**/api/projects/*');
   await page.route('**/api/image-jobs', route => route.fulfill({ status: 503, json: { error: { code: 'GEMINI_NOT_CONFIGURED', message: 'Connect Gemini on the server to generate images.' } } }));
-  await page.getByRole('button', { name: 'Generate image', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate images', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Connect Gemini');
   await expect(page.getByRole('button', { name: 'Continue to generation' })).toBeEnabled();
   expect((await scene(page)).generation.imageRequest).toBeUndefined();
   expect(submissions).toBe(1);
+});
+
+test('uploads and removes input images, preserving deletion across reload', async ({ page }) => {
+  await openOutput(page); await createPreview(page);
+  await page.getByRole('checkbox', { name: /reviewed this composition/ }).check();
+  await page.getByRole('button', { name: 'Continue to video direction' }).click();
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j2ioAAAAASUVORK5CYII=', 'base64');
+  await page.getByLabel('Upload reference images').setInputFiles({ name: 'look.png', mimeType: 'image/png', buffer: png });
+  await expect(page.getByRole('checkbox', { name: 'Use for video' })).toBeChecked();
+  await expect(page.getByRole('img', { name: 'Video reference 1', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Remove video reference 1', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: 'Use for video' })).not.toBeChecked();
+  await page.getByRole('checkbox', { name: 'Use for video' }).check();
+  await page.getByRole('button', { name: 'Remove image 1', exact: true }).click();
+  await expect(page.locator('.output-image-grid figure')).toHaveCount(0);
+  expect((await scene(page)).generation.referenceAssetIds).toEqual([]);
+  await page.reload();
+  await page.getByRole('checkbox', { name: /reviewed this composition/ }).check();
+  await page.getByRole('button', { name: 'Continue to video direction' }).click();
+  await expect(page.locator('.output-image-grid figure')).toHaveCount(0);
+});
+
+test('drafts, edits and regenerates prompts for both fields without silently applying them', async ({ page }) => {
+  await openOutput(page); await createPreview(page);
+  await page.getByRole('checkbox', { name: /reviewed this composition/ }).check();
+  await page.getByRole('button', { name: 'Continue to video direction' }).click();
+  const direction = page.getByRole('textbox', { name: 'Video instructions', exact: true });
+  await direction.fill('Toy hero in a subway');
+  const requests: { prompt: string; previous?: string }[] = [];
+  page.on('request', request => { if (request.url().endsWith('/api/output-prompts')) requests.push(request.postDataJSON()); });
+  await page.getByRole('button', { name: 'Generate video direction prompt' }).click();
+  const draft = page.getByRole('region', { name: 'Suggested video direction prompt' });
+  await expect(draft).toBeVisible(); await expect(direction).toHaveValue('Toy hero in a subway');
+  await draft.getByRole('button', { name: 'Regenerate prompt' }).click();
+  await expect(draft.getByRole('button', { name: 'Use prompt' })).toBeEnabled();
+  expect(requests[1]).toMatchObject({ prompt: 'Toy hero in a subway', previous: expect.stringContaining('soft light') });
+  await draft.getByRole('textbox').fill('My edited cinematic direction');
+  await draft.getByRole('button', { name: 'Use prompt' }).click();
+  await expect(direction).toHaveValue('My edited cinematic direction');
+  await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('Handmade clay');
+  await page.getByRole('button', { name: 'Generate visual baseline prompt' }).click();
+  const baseline = page.getByRole('region', { name: 'Suggested visual baseline prompt' });
+  await expect(baseline).toBeVisible();
+  await baseline.getByRole('button', { name: 'Use prompt' }).click();
+  await expect(page.getByRole('textbox', { name: 'Image prompt', exact: true })).toHaveValue(/Handmade clay.*soft light/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: 'test-results-output/prompts-mobile.png', fullPage: true });
+});
+
+test('deleted generated frames stay removed after job polling on reload', async ({ page }) => {
+  await openOutput(page); await createPreview(page);
+  await page.getByRole('checkbox', { name: /reviewed this composition/ }).check();
+  await page.getByRole('button', { name: 'Continue to video direction' }).click();
+  await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('Toy subway');
+  await page.getByRole('button', { name: 'Generate images', exact: true }).click();
+  await expect(page.locator('.output-image-grid figure')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Use image 1 as baseline' }).click();
+  await expect(page.locator('.reference-strip img')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Remove image 1', exact: true }).click();
+  await expect(page.locator('.output-image-grid figure')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Use image 1 as baseline' })).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('checkbox', { name: /reviewed this composition/ }).check();
+  await page.getByRole('button', { name: 'Continue to video direction' }).click();
+  await expect(page.locator('.output-image-grid figure')).toHaveCount(1);
+  await expect(page.getByRole('checkbox', { name: 'Use for video' })).toBeVisible();
 });

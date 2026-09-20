@@ -72,5 +72,5 @@ export class FileStore {
   }
 }
 export type ProjectRecord = { project: Project; updatedAt: string };
-export type StoredJob = Job & { model: string; sourceSignature: string; fingerprint: string; baselineAssetId?: string };
+export type StoredJob = Job & { model: string; sourceSignature: string; fingerprint: string; baselineAssetId?: string; lastBaselineAssetId?: string };
 export type StoredRecord = ProjectRecord | Proposal | StoredJob | SavedObject;

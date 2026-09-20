@@ -18,7 +18,8 @@ export class Jobs {
   async create(id: string, project: Project, prompt: string) {
     const extraReferences = project.generation?.referenceAssetIds;
     const baselineAssetId = project.generation?.baselineAssetId;
-    const fingerprint = createHash('sha256').update(JSON.stringify({ projectId: project.id, signature: sceneSignature(project), guide: project.generation?.guideAssetId, prompt, ...(extraReferences?.length ? { extraReferences } : {}), ...(baselineAssetId ? { baselineAssetId } : {}) })).digest('hex');
+    const lastBaselineAssetId = baselineAssetId ? project.generation?.imagePairs?.[baselineAssetId] : undefined;
+    const fingerprint = createHash('sha256').update(JSON.stringify({ projectId: project.id, signature: sceneSignature(project), guide: project.generation?.guideAssetId, prompt, ...(extraReferences?.length ? { extraReferences } : {}), ...(baselineAssetId ? { baselineAssetId } : {}), ...(lastBaselineAssetId ? { lastBaselineAssetId } : {}), ...(project.generation?.excludedReferenceAssetIds?.length ? { excludedReferenceAssetIds: project.generation.excludedReferenceAssetIds } : {}) })).digest('hex');
     if (this.submissions.has(id)) throw new AppError(409, 'SUBMITTING', 'This request is already being submitted. Check its status.');
     this.submissions.add(id);
     try {
@@ -34,7 +35,7 @@ export class Jobs {
       if (references.length > 9) throw new AppError(400, 'REFERENCE_LIMIT', 'Seedance accepts up to nine reference images. Remove extra references before generating.');
       await this.store.references(project);
       const job: StoredJob = { id, projectId: project.id, status: 'preparing', mode: 'live', guideAssetId: guide.id, referenceAssetIds: references, prompt,
-        duration: project.duration, resolution: '720p', createdAt: new Date().toISOString(), model: this.providers.model, sourceSignature: sceneSignature(project), fingerprint, ...(baselineAssetId ? { baselineAssetId } : {}) };
+        duration: project.duration, resolution: '720p', createdAt: new Date().toISOString(), model: this.providers.model, sourceSignature: sceneSignature(project), fingerprint, ...(baselineAssetId ? { baselineAssetId } : {}), ...(lastBaselineAssetId ? { lastBaselineAssetId } : {}), ...(project.generation?.excludedReferenceAssetIds?.length ? { excludedReferenceAssetIds: project.generation.excludedReferenceAssetIds } : {}) };
       await this.store.put('jobs', id, job);
       void this.submit(job).catch(() => console.error(`Could not persist generation ${job.id}. Check the data directory before restarting.`));
       return job;

@@ -1,30 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, ImagePlus } from 'lucide-react';
+import { Download, ImagePlus, Trash2, Upload } from 'lucide-react';
 import { api, ApiError, assetUrl, type Asset, type ImageJob } from '../core/api';
 import { uid, type ImageRequest } from '../core/project';
 import { videoReferences } from '../core/proposals';
 import { studio, useStudio } from '../core/store';
 import ServiceIcon from './ServiceIcon';
+import OutputPromptField from './OutputPromptField';
+import { excludeVideoReference, removeOutputImage } from '../core/outputImages';
 
 export default function OutputImages({ configured, disabled, onBusyChange }: { configured: boolean; disabled: boolean; onBusyChange: (busy: boolean) => void }) {
   const s = useStudio(), generation = s.project.generation, request = generation?.imageRequest;
-  const [prompt, setPrompt] = useState(request?.prompt ?? ''), [job, setJob] = useState<ImageJob | null>(null);
+  const [prompt, setPrompt] = useState(generation?.imagePrompt ?? request?.prompt ?? ''), [job, setJob] = useState<ImageJob | null>(null);
   const [error, setError] = useState(''), [requestError, setRequestError] = useState(''), [missing, setMissing] = useState(false), [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const uploadInput = useRef<HTMLInputElement>(null);
   const [refresh, setRefresh] = useState(0);
-  const [frame, setFrame] = useState<{ guideId: string; asset: Asset } | null>(null), [frameError, setFrameError] = useState(''), [frameRefresh, setFrameRefresh] = useState(0);
+  const [frame, setFrame] = useState<{ guideId: string; asset: Asset; last: Asset } | null>(null), [frameError, setFrameError] = useState(''), [frameRefresh, setFrameRefresh] = useState(0);
   const [alternatives, setAlternatives] = useState<1 | 3>(1);
   const mounted = useRef(false), submittingRef = useRef(false);
   const pending = !!request && (!job || job.id !== request.id || job.status === 'running');
-  const images = generation?.imageAssetIds ?? [], selected = generation?.referenceAssetIds ?? [];
-  const count = videoReferences(s.project).length;
+  const images = generation?.imageAssetIds ?? [], selected = videoReferences(s.project);
+  const blocked = disabled || pending || submitting || uploading;
+  const count = selected.length;
   const frameReady = frame?.guideId === generation?.guideAssetId;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { onBusyChange(pending || submitting); }, [pending, submitting, onBusyChange]);
+  useEffect(() => { onBusyChange(pending || submitting || uploading); }, [pending, submitting, uploading, onBusyChange]);
   useEffect(() => {
     const guideId = generation?.guideAssetId;
     setFrame(null); setFrameError(''); if (!guideId) return;
     let active = true;
-    api.guideFrame(guideId).then(asset => { if (active) setFrame({ guideId, asset }); }).catch(cause => { if (active) setFrameError(cause.message); });
+    Promise.all([api.guideFrame(guideId), api.guideFrame(guideId, 'last')]).then(([asset, last]) => { if (active) setFrame({ guideId, asset, last }); }).catch(cause => { if (active) setFrameError(cause.message); });
     return () => { active = false; };
   }, [generation?.guideAssetId, frameRefresh]);
   useEffect(() => {
@@ -36,9 +41,10 @@ export default function OutputImages({ configured, disabled, onBusyChange }: { c
         if (!active) return;
         setJob(result); setMissing(false); setRequestError('');
         const current = studio.get().project, currentGeneration = current.generation;
-        const assets = result.assetIds ?? (result.assetId ? [result.assetId] : []);
-        if (assets.length && current.id === result.projectId && currentGeneration?.imageRequest?.id === result.id && assets.some(id => !currentGeneration.imageAssetIds?.includes(id))) {
-          studio.generation({ ...currentGeneration, imageAssetIds: [...new Set([...currentGeneration.imageAssetIds ?? [], ...assets])], ...(result.guideAssetId ? { imageSources: { ...currentGeneration.imageSources, ...Object.fromEntries(assets.map(id => [id, result.guideAssetId!])) } } : {}) });
+        const assets = (result.assetIds ?? (result.assetId ? [result.assetId] : [])).filter(id => !currentGeneration?.dismissedImageAssetIds?.includes(id));
+        const pairs = Object.fromEntries(Object.entries(result.imagePairs ?? {}).filter(([first, last]) => assets.includes(first) && assets.includes(last)));
+        if (assets.length && current.id === result.projectId && currentGeneration?.imageRequest?.id === result.id && (assets.some(id => !currentGeneration.imageAssetIds?.includes(id)) || Object.entries(pairs).some(([first, last]) => currentGeneration.imagePairs?.[first] !== last))) {
+          studio.generation({ ...currentGeneration, imageAssetIds: [...new Set([...currentGeneration.imageAssetIds ?? [], ...assets])], imagePairs: { ...currentGeneration.imagePairs, ...pairs }, ...(result.guideAssetId ? { imageSources: { ...currentGeneration.imageSources, ...Object.fromEntries(assets.map(id => [id, result.guideAssetId!])) } } : {}) });
           await api.saveProject(studio.get().project).catch(cause => { if (active) setError(`Image is saved, but the project could not be updated: ${cause.message}`); });
         }
         if (result.status === 'running') timer = setTimeout(poll, 2000);
@@ -75,14 +81,14 @@ export default function OutputImages({ configured, disabled, onBusyChange }: { c
     finally { submittingRef.current = false; if (mounted.current) setSubmitting(false); }
   }
   function generate() {
-    if (!generation || pending || submittingRef.current || disabled || !configured || !frameReady || !prompt.trim() || images.length + alternatives > 24) return;
-    const next: ImageRequest = { id: uid(), prompt: prompt.trim(), guideAssetId: generation.guideAssetId, count: alternatives };
-    studio.generation({ ...generation, imageRequest: next });
+    if (!generation || pending || submittingRef.current || disabled || !configured || !frameReady || !prompt.trim() || images.length + alternatives * 2 > 24) return;
+    const next: ImageRequest = { id: uid(), prompt: prompt.trim(), guideAssetId: generation.guideAssetId, count: alternatives, paired: true };
+    studio.generation({ ...generation, imageRequest: next, dismissedImageAssetIds: [] });
     void submit(next, true);
   }
   function chooseBaseline(id: string) {
     const project = studio.get().project, current = project.generation;
-    if (!current || disabled || current.imageSources?.[id] !== current.guideAssetId) return;
+    if (!current || blocked || current.imageSources?.[id] !== current.guideAssetId) return;
     const { baselineAssetId, ...retained } = current;
     const next = { ...project, generation: { ...retained, ...(baselineAssetId !== id ? { baselineAssetId: id } : {}) } };
     if (videoReferences(next).length > 9) return;
@@ -91,23 +97,58 @@ export default function OutputImages({ configured, disabled, onBusyChange }: { c
   }
   function toggleReference(id: string) {
     const project = studio.get().project, current = project.generation;
-    if (!current || disabled) return;
-    const ids = current.referenceAssetIds ?? [], included = ids.includes(id);
+    if (!current || blocked) return;
+    const ids = current.referenceAssetIds ?? [], included = videoReferences(project).includes(id);
     if (!included && videoReferences(project).length >= 9) return;
-    studio.generation({ ...current, referenceAssetIds: included ? ids.filter(value => value !== id) : [...ids, id] });
+    studio.generation(included ? excludeVideoReference(project, id)! : { ...current, referenceAssetIds: [...new Set([...ids, id])], excludedReferenceAssetIds: current.excludedReferenceAssetIds?.filter(value => value !== id) });
     void api.saveProject(studio.get().project).catch(cause => { if (mounted.current) setError((cause as Error).message); });
   }
+  async function upload(files: FileList | null) {
+    if (!files?.length || blocked) return;
+    const projectId = s.project.id;
+    setUploading(true); setError('');
+    try {
+      for (const file of Array.from(files)) {
+        if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 30_000_000) throw new Error('Use PNG, JPEG or WebP images under 30 MB.');
+        if ((studio.get().project.generation?.imageAssetIds?.length ?? 0) >= 24) throw new Error('This project has reached its 24-image limit. Remove an image to upload more.');
+        const asset = await api.upload(file, 'reference');
+        const project = studio.get().project, current = project.generation;
+        if (project.id !== projectId || !current) return;
+        const withReference = { ...current, referenceAssetIds: [...new Set([...current.referenceAssetIds ?? [], asset.id])], excludedReferenceAssetIds: current.excludedReferenceAssetIds?.filter(id => id !== asset.id) };
+        const include = videoReferences({ ...project, generation: withReference }).length <= 9;
+        studio.generation({ ...current, imageAssetIds: [...new Set([...current.imageAssetIds ?? [], asset.id])],
+          dismissedImageAssetIds: current.dismissedImageAssetIds?.filter(id => id !== asset.id),
+          ...(include ? { referenceAssetIds: withReference.referenceAssetIds, excludedReferenceAssetIds: withReference.excludedReferenceAssetIds } : {}) });
+        await api.saveProject(studio.get().project);
+      }
+    } catch (cause) { if (mounted.current) setError((cause as Error).message); }
+    finally { if (mounted.current) setUploading(false); }
+  }
+  function remove(id: string) {
+    const current = studio.get().project.generation;
+    if (!current || blocked) return;
+    studio.generation(removeOutputImage(excludeVideoReference(studio.get().project, id)!, id, job?.assetIds ?? (job?.assetId ? [job.assetId] : [])));
+    void api.saveProject(studio.get().project).catch(cause => { if (mounted.current) setError(cause.message); });
+  }
+  const lastIds = Object.values(generation?.imagePairs ?? {});
   return <section className="output-images" aria-label="Image generation">
-    <div className="output-section-title"><h3><ImagePlus size={15} />Visual baseline <span>Optional</span></h3><span className="service-label"><ServiceIcon service="gemini" />Gemini</span></div>
-    {frameReady && frame ? <div className="output-frame-source"><img src={assetUrl(frame.asset.id)} alt="Composition first frame" /><div><strong>First frame</strong><p>Keep the composition. Describe the finished look.</p></div></div> : frameError ? <div className="output-attention"><p>{frameError}</p><button className="text-link" onClick={() => setFrameRefresh(value => value + 1)}>Retry first frame</button></div> : <p className="output-note" role="status">Preparing first frame…</p>}
-    <label className="sr-only" htmlFor="image-prompt">Image prompt</label>
-    <textarea id="image-prompt" rows={2} maxLength={4000} value={prompt} onChange={e => setPrompt(e.target.value)} disabled={disabled || pending} placeholder="Describe a character, setting or style…" />
-    {!configured && <p className="output-note">Connect Gemini on the server to generate images.</p>}
-    {job?.status === 'failed' ? <div className="output-attention" role="alert"><p>{job.error}</p>{!!job.assetIds?.length && <p>{job.assetIds.length} of {job.count ?? 1} images saved below.</p>}<button className="button secondary" disabled={disabled} onClick={() => { if (generation) { const { imageRequest: _request, ...retained } = generation; studio.generation(retained); } setJob(null); setError(''); setRequestError(''); }}>Start another image</button></div> : pending ? <div className="output-image-status" role="status"><span>{missing ? 'Image request not confirmed.' : `Generating ${(job?.assetIds?.length ?? 0) + 1} of ${request?.count ?? 1}…`}</span>{missing && <button className="text-link" disabled={disabled || submitting} onClick={() => void submit(request!)}>Retry same image request</button>}</div> : <div className="output-image-actions"><select aria-label="Image options" value={alternatives} disabled={disabled} onChange={event => setAlternatives(Number(event.target.value) as 1 | 3)}><option value={1}>1 image</option><option value={3}>3 alternatives</option></select><button className="button secondary" disabled={disabled || !configured || !frameReady || !prompt.trim() || images.length + alternatives > 24} onClick={generate}><ServiceIcon service="gemini" />{alternatives === 3 ? 'Generate 3 alternatives' : 'Generate image'}</button></div>}
-    <p className="output-note">Uses Gemini credits per image. Choose one baseline to guide the video's look; results may vary.</p>
-    {images.length >= 24 && <p className="output-note">This project has reached its 24-image limit.</p>}
-    {images.length > 0 && <div className="output-image-grid">{images.map((id, index) => <figure key={id} className={generation?.baselineAssetId === id ? 'is-baseline' : undefined}><a href={assetUrl(id)} target="_blank" rel="noreferrer" aria-label={`Open generated image ${index + 1}`}><img src={assetUrl(id)} alt={`Generated image ${index + 1}`} /></a><figcaption>{generation?.imageSources?.[id] ? <button aria-label={`Use image ${index + 1} as baseline`} aria-pressed={generation.baselineAssetId === id} disabled={disabled || generation.imageSources[id] !== generation.guideAssetId || !generation.baselineAssetId && count >= 9} onClick={() => chooseBaseline(id)}>{generation.imageSources[id] !== generation.guideAssetId ? 'Earlier preview' : generation.baselineAssetId === id ? 'Selected baseline' : 'Use baseline'}</button> : <label><input type="checkbox" checked={selected.includes(id)} disabled={disabled || !selected.includes(id) && count >= 9} onChange={() => toggleReference(id)} />Use for video</label>}<a href={assetUrl(id, true)} download aria-label={`Download image ${index + 1}`} title="Download image"><Download size={15} /></a></figcaption></figure>)}</div>}
-    {images.length > 0 && count >= 9 && <p className="output-note">All 9 video reference slots are in use.</p>}
+    <OutputPromptField target="baseline" title={<h3><ImagePlus size={15} />Visual baseline <span>Optional</span></h3>} value={prompt} onChange={value => { setPrompt(value); const current = studio.get().project.generation; if (current) studio.generation({ ...current, imagePrompt: value }); }} configured={configured} disabled={blocked} context={generation?.instructions}>
+      {frameReady && frame ? <div className="output-frame-sources"><figure><img src={assetUrl(frame.asset.id)} alt="Composition first frame" /><figcaption>First frame</figcaption></figure><figure><img src={assetUrl(frame.last.id)} alt="Composition last frame" /><figcaption>Last frame</figcaption></figure></div> : frameError ? <div className="output-attention"><p>{frameError}</p><button className="text-link" onClick={() => setFrameRefresh(value => value + 1)}>Retry composition frames</button></div> : <p className="output-note" role="status">Preparing composition frames...</p>}
+    </OutputPromptField>
+    {job?.status === 'failed' ? <div className="output-attention" role="alert"><p>{job.error}</p>{!!job.assetIds?.length && <p>{job.assetIds.length} images saved below.</p>}<button className="button secondary" disabled={disabled} onClick={() => { const current = studio.get().project.generation; if (current) { const { imageRequest: _request, ...retained } = current; studio.generation(retained); } setJob(null); setError(''); setRequestError(''); }}>Start another image</button></div> : pending ? <div className="output-image-status" role="status"><span>{missing ? 'Image request not confirmed.' : `Generating image ${Math.min((job?.assetIds?.length ?? 0) + 1, (request?.count ?? 1) * (request?.paired ? 2 : 1))} of ${(request?.count ?? 1) * (request?.paired ? 2 : 1)}...`}</span>{missing && <button className="text-link" disabled={disabled || submitting} onClick={() => void submit(request!)}>Retry same image request</button>}</div> : <div className="output-image-actions"><select aria-label="Image options" value={alternatives} disabled={blocked} onChange={event => setAlternatives(Number(event.target.value) as 1 | 3)}><option value={1}>1 matched pair</option><option value={3}>3 matched pairs</option></select><button className="button secondary" disabled={blocked || !configured || !frameReady || !prompt.trim() || images.length + alternatives * 2 > 24} onClick={generate}><ServiceIcon service="gemini" />{alternatives === 3 ? 'Generate 3 pairs' : 'Generate images'}</button></div>}
+    <div className="output-image-actions"><input ref={uploadInput} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" multiple aria-label="Upload reference images" disabled={blocked || images.length >= 24} onChange={event => { void upload(event.target.files); event.target.value = ''; }} /><button className="button secondary" disabled={blocked || images.length >= 24} onClick={() => uploadInput.current?.click()}><Upload size={15} />{uploading ? 'Uploading...' : 'Upload images'}</button></div>
+    <p className="output-note">Generate matching first and last images from your composition. Each pair uses 2 Gemini image generations and 2 video reference slots. You can also upload your own references.</p>
+    {images.length >= 24 && <p className="output-note">This project has reached its 24-image limit. Remove an image to make room.</p>}
+    {images.length > 0 && <div className="output-image-grid">{images.map((id, index) => {
+      const last = generation?.imagePairs?.[id], isLast = lastIds.includes(id), isBaseline = generation?.baselineAssetId === id || !!generation?.baselineAssetId && generation.imagePairs?.[generation.baselineAssetId] === id;
+      const stale = !!generation?.imageSources?.[id] && generation.imageSources[id] !== generation.guideAssetId;
+      const fits = !generation || videoReferences({ ...s.project, generation: { ...generation, baselineAssetId: id } }).length <= 9;
+      return <figure key={id} className={isBaseline ? 'is-baseline' : undefined}><a href={assetUrl(id)} target="_blank" rel="noreferrer" aria-label={`Open image ${index + 1}`}><img src={assetUrl(id)} alt={`Image ${index + 1}${last ? ' - First frame' : isLast ? ' - Last frame' : ''}`} /></a><figcaption>
+        <div>{generation?.imageSources?.[id] ? isLast ? <span>Last frame - {isBaseline ? 'Selected pair' : 'Paired with first'}</span> : <button aria-label={`Use image ${index + 1} as baseline`} aria-pressed={isBaseline} disabled={blocked || stale || !isBaseline && !fits} onClick={() => chooseBaseline(id)}>{stale ? 'Earlier preview' : isBaseline ? 'Selected baseline' : last ? 'Use frame pair' : 'Use baseline'}</button> : <label><input type="checkbox" checked={selected.includes(id)} disabled={blocked || !selected.includes(id) && count >= 9} onChange={() => toggleReference(id)} />Use for video</label>}</div>
+        <a href={assetUrl(id, true)} download aria-label={`Download image ${index + 1}`} title="Download image"><Download size={15} /></a><button aria-label={`Remove image ${index + 1}`} title="Remove image" disabled={blocked} onClick={() => remove(id)}><Trash2 size={15} /></button>
+      </figcaption></figure>;
+    })}</div>}
+    {images.length > 0 && count >= 9 && <p className="output-note">All 9 video reference slots are in use. Unselect a reference to choose another.</p>}
     {(error || requestError) && <p className="inline-error" role="alert">{error || requestError}</p>}
   </section>;
 }

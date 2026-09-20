@@ -24,7 +24,8 @@ export function sceneSignature(project: Project): string {
   return `${text.length}-${hash >>> 0}-${second >>> 0}`;
 }
 export function videoReferences(project: Project): string[] {
-  return [...new Set([...(project.generation?.baselineAssetId ? [project.generation.baselineAssetId] : []), ...project.objects.filter(o => !o.hidden).flatMap(o => o.referenceAssetIds), ...project.generation?.referenceAssetIds ?? []])];
+  const generation = project.generation, first = generation?.baselineAssetId, last = first ? generation?.imagePairs?.[first] : undefined;
+  return [...new Set([...(first ? [first] : []), ...(last ? [last] : []), ...project.objects.filter(o => !o.hidden).flatMap(o => o.referenceAssetIds).filter(id => !generation?.excludedReferenceAssetIds?.includes(id)), ...generation?.referenceAssetIds ?? []])];
 }
 export function objectFromSpec(spec: ObjectSpec, project: Project): SceneObject {
   const checked = objectSpecSchema.parse(spec);

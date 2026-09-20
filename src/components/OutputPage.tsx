@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, Download, Film, Play, Shapes } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Download, Film, Play, Shapes, X } from 'lucide-react';
 import { api, ApiError, assetUrl, type Capabilities, type Job } from '../core/api';
 import { studio, useStudio } from '../core/store';
 import { uid, type Project } from '../core/project';
@@ -9,6 +9,9 @@ import { changeCameraView } from '../scene/cameraNavigation';
 import { phoneCamera } from '../scene/phoneCamera';
 import OutputImages from './OutputImages';
 import ServiceIcon from './ServiceIcon';
+import OutputPromptField from './OutputPromptField';
+import { excludeVideoReference } from '../core/outputImages';
+import './output.css';
 
 const labels: Record<Job['status'], string> = { preparing: 'Uploading guide and references…', queued: 'Queued at Seedance…', running: 'Generating your video…', completed: 'Video ready', failed: 'Generation failed' };
 const steps = ['Preview', 'Direction', 'Generate'];
@@ -148,9 +151,9 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
             <p className="output-note">Free preview. No AI credits used.</p>
           </>}
           {step === 2 && <>
-            <label className="field-label">Video direction<textarea aria-label="Video instructions" rows={3} maxLength={4000} value={prompt} disabled={pending || !!output} onChange={e => { setPrompt(e.target.value); studio.videoInstructions(e.target.value); }} placeholder="Lighting, materials, style…" /></label>
-            <div className="output-references"><h3>Video references <span>{references.length} / 9</span></h3>{references.length > 0 && <div className="reference-strip">{references.map((id, i) => <img key={id} src={assetUrl(id)} alt={`Video reference ${i + 1}`} />)}</div>}</div>
-            {references.length > 9 && <p className="inline-error">Return to the editor and reduce the reference images to nine or fewer.</p>}
+            <OutputPromptField target="video" title={<span className="field-label">Video direction</span>} value={prompt} onChange={value => { setPrompt(value); studio.videoInstructions(value); }} configured={!!capabilities?.gemini} disabled={pending || !!output || !!stale} context={generation?.imagePrompt} />
+            <div className="output-references"><h3>Video references <span>{references.length} / 9</span></h3>{references.length > 0 && <div className="reference-strip">{references.map((id, i) => <div key={id}><img src={assetUrl(id)} alt={`Video reference ${i + 1}`} /><button aria-label={`Remove video reference ${i + 1}`} disabled={busy || pending || !!output || imageBusy} onClick={() => { const next = excludeVideoReference(studio.get().project, id); if (next) { studio.generation(next); void api.saveProject(studio.get().project).catch(cause => setError(cause.message)); } }}><X size={13} /></button></div>)}</div>}</div>
+            {references.length > 9 && <p className="inline-error">Remove reference images to use nine or fewer.</p>}
             {staleBaseline && <p className="inline-error">Choose a baseline from the current preview before continuing.</p>}
           </>}
           {generation && <div hidden={step !== 2}><OutputImages configured={!!capabilities?.gemini} disabled={busy || pending || !!output || !!stale} onBusyChange={setImageBusy} /></div>}
@@ -162,7 +165,7 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
             <div className="output-provider"><ServiceIcon service="bytedance" /><strong>Seedance</strong><span>via</span><ServiceIcon service="fal" /><span>fal</span></div>
             {stale && (jobId || output) && <p className="output-copy output-attention">This request uses an earlier version of your composition. Your request and any finished video stay available here.</p>}
             <dl className="output-summary"><div><dt>Video</dt><dd>{jobId || output ? resultDuration ?? '—' : s.project.duration}s · 720p · 16:9</dd></div><div><dt>Audio</dt><dd>Off</dd></div><div><dt>References</dt><dd>{jobId ? job ? `${job.referenceAssetIds.length} images` : 'Checking…' : `${references.length} images`}</dd></div></dl>
-            <label className="field-label output-direction-editor"><span>Video direction</span><textarea aria-label="Video instructions" rows={4} maxLength={4000} value={prompt} disabled={pending || !!output} onChange={e => { setPrompt(e.target.value); studio.videoInstructions(e.target.value); }} placeholder="Lighting, materials, style, character direction…" /></label>
+            <OutputPromptField target="video" title={<span className="field-label">Video direction</span>} value={prompt} onChange={value => { setPrompt(value); studio.videoInstructions(value); }} configured={!!capabilities?.gemini} disabled={pending || !!output || !!stale} context={generation?.imagePrompt} />
             {!jobId && !output && <>
               {!canContinue && <div className="output-attention"><p>Review a current preview before generating.</p><button className="button secondary" onClick={() => setStep(1)}>Review preview</button></div>}
               {s.project.demo && <div className="output-attention"><p>Turn off Demo mode to generate. Your animation stays intact.</p><button className="button secondary" onClick={studio.disableDemo}>Turn off Demo mode</button></div>}

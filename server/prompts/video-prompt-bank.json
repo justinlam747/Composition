@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "reviewed": "2026-09-19",
+  "sources": [
+    { "title": "Google video generation prompt guide", "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/video/video-gen-prompt-guide", "takeaway": "Describe subject, action, setting, camera, lighting and visual style explicitly." },
+    { "title": "Runway Gen-4 Video Prompting Guide", "url": "https://help.runwayml.com/hc/en-us/articles/39789879462419-Gen-4-Video-Prompting-Guide", "takeaway": "Start with one clear scene and concrete motion. Add compatible details incrementally; use positive descriptions." },
+    { "title": "Runway Camera Terms, Prompts, & Examples", "url": "https://help.runwayml.com/hc/en-us/articles/46749315925395-Camera-Terms-Prompts-Examples", "takeaway": "Camera position, focus, movement and lens treatment describe distinct aspects of a shot." }
+  ],
+  "authorship": "Original Composition vocabulary and examples informed by the linked references; no scraped prompt collection. These are creative suggestions, not model guarantees.",
+  "rules": [
+    "Infer from meaning, not keyword matching. Preserve explicit subjects, actions, identities and artistic medium.",
+    "Composition frames and motion guide own staging, poses, scale and camera movement. Do not invent a replacement shot.",
+    "Lens treatment may suggest distortion or focus without moving the camera or changing geometry. Default to restrained distortion unless the user requests stylization.",
+    "Quality means readable details and consistent geometry/materials, not an unsupported resolution claim.",
+    "Choose a small coherent set of qualities. Explain inferred choices as suggestions. Do not add unrelated subjects or story beats.",
+    "Image prompts describe a finished look shared by both endpoint frames. Video prompts describe temporal continuity and motion within the guide."
+  ],
+  "vocabulary": {
+    "camera": ["preserve guide framing", "follow the saved camera path", "deep focus for readable staging", "gentle background separation"],
+    "distortion": ["natural perspective and straight edges", "subtle edge softness", "deliberate fisheye curvature only when requested", "restrained lens bloom"],
+    "quality": ["stable silhouettes across frames", "clear material detail", "coherent reflections", "consistent subject identity"],
+    "mood": ["playful miniature adventure", "quiet observational realism", "uneasy restrained tension", "warm nostalgic intimacy"],
+    "lighting": ["soft window illumination", "cool overhead practical lights", "warm low-angle sunlight", "controlled rim highlights"],
+    "texture": ["molded plastic seams and tiny scuffs", "woven fabric fibers", "brushed metal grain", "porous stone with weathered edges"]
+  },
+  "examples": [
+    { "short": "toy hero in a subway", "interpretation": "Playful miniature action; preserve toy proportions.", "look": "A miniature subway built from interlocking toy bricks, with molded plastic surfaces, small seams and scuffs, cool station lamps and warm train windows. Keep the reference frame's pose, placement and perspective.", "video": "Carry the toy hero through the guide's action and camera path. Keep brick proportions and plastic highlights consistent as the hero passes the station lights." },
+    { "short": "lonely rainy evening", "interpretation": "Quiet, subdued mood; wet surfaces support the emotion.", "look": "Muted blue-gray surroundings, damp textured surfaces and soft reflected practical light. Retain the supplied frame's staging and natural perspective.", "video": "Follow the guide's timing and camera movement with a restrained evening atmosphere. Reflections remain coherent as the subject moves." },
+    { "short": "warm handmade clay", "interpretation": "Tactile, friendly stop-motion aesthetic.", "look": "Hand-shaped clay with small fingerprints, matte edges and warm diffuse light. Preserve subject placement and pose from the frame.", "video": "Maintain the guide's trajectory and timing with a handmade clay appearance. Keep fingerprints and character features consistent through the motion." },
+    { "short": "sleek futuristic metal", "interpretation": "Precise and cool with controlled reflections.", "look": "Brushed alloy surfaces with fine directional grain and clean cool highlights. Maintain the frame's camera and geometry.", "video": "Follow the guide while letting highlights travel naturally across the metal. Keep silhouettes stable and the same surface finish from start to finish." }
+  ]
+}

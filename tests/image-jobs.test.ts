@@ -94,6 +94,30 @@ describe('output image generation (provider mocked)', () => {
     await request(context.app).put(`/api/projects/${project.id}`).send(project).expect(200);
     return { project, input: variantInput, frame };
   }
+  it('creates matched endpoints using the ending pose and generated first-frame appearance, then sends both to video', async () => {
+    const { project, input, frame } = await framed();
+    const end = await context.store.asset(Buffer.concat([referencePng, Buffer.from('ending pose')]), 'image/png', 'reference');
+    const guide = await context.store.requireAsset(input.guideAssetId);
+    await context.store.put('assets', guide.id, { ...guide, lastFrameAssetId: end.id });
+    const pairedInput = { ...input, count: 1 as const, paired: true };
+    project.generation!.imageRequest = pairedInput;
+    await request(context.app).put(`/api/projects/${project.id}`).send(project).expect(200);
+    image.mockImplementation(() => context.store.asset(Buffer.concat([referencePng, Buffer.from([image.mock.calls.length])]), 'image/png', 'reference'));
+    await request(context.app).post('/api/image-jobs').send(pairedInput).expect(202);
+    const job = await completed(input.id), [first, last] = job.assetIds!;
+    expect(job.assetIds).toHaveLength(2); expect(job.imagePairs).toEqual({ [first]: last });
+    expect(image.mock.calls[0][1]).toBe(frame.id);
+    expect(image.mock.calls[1].slice(1)).toEqual([end.id, first]);
+    expect(image.mock.calls[1][0]).toContain(input.prompt);
+    expect(image.mock.calls[1][0]).toContain('do not copy its starting pose');
+    await request(context.app).post('/api/image-jobs').send(pairedInput).expect(202);
+    expect(image).toHaveBeenCalledTimes(2);
+    await request(context.app).post('/api/image-jobs').send({ ...pairedInput, paired: false }).expect(409);
+    project.generation = { ...project.generation!, imageAssetIds: job.assetIds, imageSources: { [first]: guide.id, [last]: guide.id }, imagePairs: job.imagePairs, baselineAssetId: first };
+    const result = await request(context.app).post('/api/jobs').send({ id: uid(), project, prompt: 'Follow the guide', mode: 'live' }).expect(202);
+    expect(result.body.referenceAssetIds).toEqual([first, last]); expect(result.body.lastBaselineAssetId).toBe(last);
+    await vi.waitFor(async () => expect((await context.store.get<{ status: string }>('jobs', result.body.id)).status).toBe('queued'));
+  });
   it('uses the same first frame for three alternatives and sends only the chosen baseline first to video', async () => {
     const { project, input, frame } = await framed();
     image.mockImplementation(() => context.store.asset(Buffer.concat([referencePng, Buffer.from([image.mock.calls.length])]), 'image/png', 'reference'));

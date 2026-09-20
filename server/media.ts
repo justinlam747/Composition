@@ -7,19 +7,33 @@ import { AppError, FileStore } from './storage';
 
 const execute = promisify(execFile);
 export const videoExportAvailable = Boolean(ffmpeg);
-export async function firstFrame(store: FileStore, guideId: string) {
-  const guide = await store.requireAsset(guideId, 'guide');
-  if (guide.firstFrameAssetId) return store.requireAsset(guide.firstFrameAssetId, 'reference');
-  if (!ffmpeg) throw new AppError(503, 'ENCODER_MISSING', 'The video encoder is unavailable. Reinstall server dependencies.');
-  try {
-    const { stdout } = await execute(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-protocol_whitelist', 'file,pipe', '-i', store.file('assets', guideId, 'bin'), '-map', '0:v:0', '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'], { encoding: 'buffer', timeout: 30000, windowsHide: true, maxBuffer: 10_000_000 });
-    const asset = await store.asset(stdout, imageMime(stdout), 'reference', { width: guide.width, height: guide.height });
-    await store.put('assets', guideId, { ...guide, firstFrameAssetId: asset.id });
-    return asset;
-  } catch (error) {
-    if (error instanceof AppError) throw error;
-    throw new AppError(400, 'FRAME_UNAVAILABLE', 'Could not read the first frame. Create a new composition preview.');
-  }
+const frameOperations = new WeakMap<FileStore, Map<string, Promise<unknown>>>();
+export const firstFrame = (store: FileStore, guideId: string) => guideFrame(store, guideId, 'first');
+export const lastFrame = (store: FileStore, guideId: string) => guideFrame(store, guideId, 'last');
+async function guideFrame(store: FileStore, guideId: string, endpoint: 'first' | 'last') {
+  let operations = frameOperations.get(store);
+  if (!operations) { operations = new Map(); frameOperations.set(store, operations); }
+  const operation = (operations.get(guideId) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+    const guide = await store.requireAsset(guideId, 'guide');
+    const field = endpoint === 'first' ? 'firstFrameAssetId' : 'lastFrameAssetId';
+    if (guide[field]) return store.requireAsset(guide[field]!, 'reference');
+    if (!ffmpeg) throw new AppError(503, 'ENCODER_MISSING', 'The video encoder is unavailable. Reinstall server dependencies.');
+    try {
+      // Reverse only the final second to select the actual final decoded frame with bounded memory.
+      const { stdout } = await execute(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-protocol_whitelist', 'file,pipe',
+        ...(endpoint === 'last' ? ['-sseof', '-1'] : []), '-i', store.file('assets', guideId, 'bin'), '-map', '0:v:0',
+        ...(endpoint === 'last' ? ['-vf', 'reverse'] : []), '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'],
+      { encoding: 'buffer', timeout: 30000, windowsHide: true, maxBuffer: 10_000_000 });
+      const asset = await store.asset(stdout, imageMime(stdout), 'reference', { width: guide.width, height: guide.height });
+      await store.put('assets', guideId, { ...guide, [field]: asset.id });
+      return asset;
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw new AppError(400, 'FRAME_UNAVAILABLE', `Could not read the ${endpoint} frame. Create a new composition preview.`);
+    }
+  });
+  operations.set(guideId, operation);
+  try { return await operation; } finally { if (operations.get(guideId) === operation) operations.delete(guideId); }
 }
 export function imageMime(bytes: Buffer): string {
   if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';

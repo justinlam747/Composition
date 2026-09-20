@@ -7,7 +7,8 @@ export const referencePng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC
 export function mockProviders(store: FileStore): Providers {
   return {
     configured: { gemini: true, fal: true, hunyuanMotion: true }, model: 'mock-seedance-test-only',
-    async image(prompt) { if (prompt === 'FAIL_IMAGE_TEST') throw new AppError(502, 'MOCK_FAILURE', 'Test image generation failed.'); return store.asset(referencePng, 'image/png', 'reference'); },
+    async refinePrompt(_project, _target, prompt) { return { prompt: `${prompt}. Preserve the composition framing, with soft light and consistent material detail.`, intent: 'Suggested warm, tactile treatment.', qualities: { camera: 'Guide framing', distortion: 'Natural perspective', quality: 'Consistent detail', mood: 'Warm', lighting: 'Soft light', texture: 'Tactile surfaces' } }; },
+    async image(prompt) { if (prompt.includes('FAIL_IMAGE_TEST')) throw new AppError(502, 'MOCK_FAILURE', 'Test image generation failed.'); return store.asset(Buffer.concat([referencePng, Buffer.from(prompt)]), 'image/png', 'reference'); },
     async propose(project, kind, prompt, objectId) {
       const proposal = demoProposal(project, kind, prompt, objectId); proposal.mode = 'live';
       if (proposal.content.kind === 'object') { proposal.content.object.name = 'Test oak plinth'; proposal.content.object.referenceAssetIds = [(await store.asset(referencePng, 'image/png', 'reference')).id]; }

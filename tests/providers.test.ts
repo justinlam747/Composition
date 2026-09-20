@@ -88,4 +88,25 @@ describe('live provider request contracts (transport mocked, no paid calls)', ()
     expect(input.prompt).toContain('motion in @Video1');
     expect(input.image_urls).toHaveLength(2);
   });
+  it('passes both ending geometry and starting appearance to Gemini in that order', async () => {
+    const end = await store.asset(referencePng, 'image/png', 'reference');
+    const lookBytes = Buffer.concat([referencePng, Buffer.from('look')]);
+    const look = await store.asset(lookBytes, 'image/png', 'reference');
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: referencePng.toString('base64') } }] } }] }));
+    vi.stubGlobal('fetch', fetchMock);
+    await liveProviders(store).image('Same look, ending pose', end.id, look.id);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.contents[0].parts.slice(1).map((part: { inlineData: { data: string } }) => part.inlineData.data)).toEqual([referencePng.toString('base64'), lookBytes.toString('base64')]);
+  });
+  it('labels the selected ending frame separately from supporting images in video requests', async () => {
+    const guide = await store.asset(Buffer.from('guide'), 'video/mp4', 'guide');
+    const first = await store.asset(referencePng, 'image/png', 'reference');
+    const last = await store.asset(Buffer.concat([referencePng, Buffer.from('last')]), 'image/png', 'reference');
+    mocks.upload.mockResolvedValue('https://fal.media/input'); mocks.submit.mockResolvedValue({ request_id: 'paired-video' });
+    const provider = liveProviders(store);
+    await provider.submit({ id: 'job', projectId: 'project', status: 'preparing', mode: 'live', guideAssetId: guide.id, referenceAssetIds: [first.id, last.id], baselineAssetId: first.id, lastBaselineAssetId: last.id, prompt: 'Natural motion', duration: 5, resolution: '720p', model: provider.model, sourceSignature: 'test', fingerprint: 'test', createdAt: new Date().toISOString() });
+    const input = mocks.submit.mock.calls[0][1].input;
+    expect(input.prompt).toContain('@Image2 as the last-frame appearance');
+    expect(input.prompt).not.toContain('supporting object');
+  });
 });

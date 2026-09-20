@@ -28,11 +28,12 @@ export interface SceneObject {
   hidden?: boolean;
   appearance?: 'spider';
 }
-export interface ImageRequest { id: string; prompt: string; guideAssetId?: string; count?: 1 | 3 }
+export interface ImageRequest { id: string; prompt: string; guideAssetId?: string; count?: 1 | 3; paired?: boolean }
 export interface Generation {
   guideAssetId: string; sourceSignature: string; jobId?: string; outputAssetId?: string; instructions?: string;
   imageRequest?: ImageRequest; imageAssetIds?: string[]; referenceAssetIds?: string[];
   imageSources?: Record<string, string>; baselineAssetId?: string;
+  imagePairs?: Record<string, string>; imagePrompt?: string; dismissedImageAssetIds?: string[]; excludedReferenceAssetIds?: string[];
 }
 export interface ShotCamera { position: Vec3; rotation: Vec3 }
 export interface Project {
@@ -286,11 +287,15 @@ export function validateProject(input: unknown): Project {
   if (p.generation && (!validId(p.generation.guideAssetId) || typeof p.generation.sourceSignature !== 'string' || p.generation.sourceSignature.length > 100 ||
     (p.generation.jobId !== undefined && !validId(p.generation.jobId)) || (p.generation.outputAssetId !== undefined && !validId(p.generation.outputAssetId)) ||
     (p.generation.imageRequest !== undefined && (!p.generation.imageRequest || !validId(p.generation.imageRequest.id) || typeof p.generation.imageRequest.prompt !== 'string' || !p.generation.imageRequest.prompt.trim() || p.generation.imageRequest.prompt.length > 4000 ||
-      (p.generation.imageRequest.guideAssetId !== undefined && !validId(p.generation.imageRequest.guideAssetId)) || (p.generation.imageRequest.count !== undefined && ![1, 3].includes(p.generation.imageRequest.count)))) ||
+      (p.generation.imageRequest.guideAssetId !== undefined && !validId(p.generation.imageRequest.guideAssetId)) || (p.generation.imageRequest.count !== undefined && ![1, 3].includes(p.generation.imageRequest.count)) || (p.generation.imageRequest.paired !== undefined && (typeof p.generation.imageRequest.paired !== 'boolean' || p.generation.imageRequest.paired && !p.generation.imageRequest.guideAssetId)))) ||
     (p.generation.imageAssetIds !== undefined && (!Array.isArray(p.generation.imageAssetIds) || p.generation.imageAssetIds.length > 24 || !p.generation.imageAssetIds.every(validId))) ||
     (p.generation.referenceAssetIds !== undefined && (!Array.isArray(p.generation.referenceAssetIds) || p.generation.referenceAssetIds.length > 9 || !p.generation.referenceAssetIds.every(validId))) ||
     (p.generation.imageSources !== undefined && (!p.generation.imageSources || typeof p.generation.imageSources !== 'object' || Array.isArray(p.generation.imageSources) || Object.keys(p.generation.imageSources).length > 24 || !Object.entries(p.generation.imageSources).every(([assetId, guideId]) => validId(assetId) && validId(guideId) && p.generation!.imageAssetIds?.includes(assetId)))) ||
     (p.generation.baselineAssetId !== undefined && (!validId(p.generation.baselineAssetId) || !p.generation.imageSources?.[p.generation.baselineAssetId])) ||
+    (p.generation.imagePrompt !== undefined && (typeof p.generation.imagePrompt !== 'string' || p.generation.imagePrompt.length > 4000)) ||
+    (p.generation.dismissedImageAssetIds !== undefined && (!Array.isArray(p.generation.dismissedImageAssetIds) || p.generation.dismissedImageAssetIds.length > 24 || !p.generation.dismissedImageAssetIds.every(validId))) ||
+    (p.generation.excludedReferenceAssetIds !== undefined && (!Array.isArray(p.generation.excludedReferenceAssetIds) || p.generation.excludedReferenceAssetIds.length > 288 || !p.generation.excludedReferenceAssetIds.every(validId))) ||
+    (p.generation.imagePairs !== undefined && (!p.generation.imagePairs || typeof p.generation.imagePairs !== 'object' || Array.isArray(p.generation.imagePairs) || Object.keys(p.generation.imagePairs).length > 12 || !Object.entries(p.generation.imagePairs).every(([first, last]) => validId(first) && validId(last) && first !== last && p.generation!.imageAssetIds?.includes(first) && p.generation!.imageAssetIds?.includes(last) && !!p.generation!.imageSources?.[first] && p.generation!.imageSources[first] === p.generation!.imageSources[last] && !p.generation!.imagePairs![last]))) ||
     (p.generation.instructions !== undefined && (typeof p.generation.instructions !== 'string' || p.generation.instructions.length > 4000)))) throw new Error('Invalid generation assets.');
   const known = new Set(BONES.map(b => b.id)), seenTracks = new Set<string>(), seenKeys = new Set<string>();
   if (p.velocities !== undefined) {
