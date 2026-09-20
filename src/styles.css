@@ -620,8 +620,7 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 .output-steps button { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; padding: 8px 12px; min-height: 40px; font-size: 11px; color: var(--muted); }
 .output-steps button[aria-current=step] { color: var(--text); font-weight: 700; }
 .output-steps button:disabled { opacity: .65; }
-.step-icon { display: grid; place-items: center; width: 25px; height: 25px; flex-shrink: 0; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); }
-[aria-current=step] .step-icon { border-color: var(--text); background: var(--raised); }
+.step-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .output-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 28px; align-items: start; }
 .output-preview { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
 .output-preview-heading { display: flex; justify-content: space-between; gap: 12px; padding: 8px 8px 18px; font-size: 11px; font-weight: 650; }
