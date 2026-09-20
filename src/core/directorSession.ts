@@ -50,6 +50,19 @@ export class DirectorSession {
   }
   private message(role: DirectorMessage['role'], text: string) { this.update({ messages: [...this.state.messages, { id: uid(), role, text }].slice(-100) }); }
   clearError = () => this.update({ error: '' });
+  clear = () => {
+    if (this.state.busy) return;
+    const proposal = this.state.proposal;
+    if (proposal && !['applied', 'cancelled'].includes(proposal.status) && this.active && studio.get().project.id === this.projectId) {
+      void api.directorDecision(proposal, 'cancel', studio.get().project).catch(() => { /* Clearing local chat must still work if the server is unavailable. */ });
+    }
+    this.stopVoice(); this.abort?.abort(); this.abort = undefined; clearTimeout(this.poll); this.poll = undefined;
+    this.requestRevision++; this.voiceInputRevision++; this.autoApply = false; this.pendingTool = undefined;
+    this.cancelledTools.clear(); this.voiceApprovals.clear();
+    try { localStorage.removeItem(RECOVERY); } catch { /* Recovery storage is optional. */ }
+    studio.patch({ preview: null, directorPreviewPlacement: null, directorPicking: false });
+    this.update({ messages: [], proposal: null, execution: null, busy: false, error: '', voice: 'off', needsReview: false });
+  };
   checkProgress = async () => {
     const expected = this.state.execution; if (!expected) return;
     try { const result = await api.directorExecution(expected.id); if (this.state.execution !== expected) return; this.autoApply = false; this.update({ execution: result, proposal: result.proposal, error: '', needsReview: true }); this.watch(); }

@@ -58,6 +58,23 @@ test('cancel leaves the scene unchanged and a scene edit requires renewed approv
   await expect.poll(async () => (await scene(page)).objects.length).toBe(3);
 });
 
+test('clear chat removes the conversation and pending proposal without changing the scene', async ({ page }) => {
+  await openDirector(page); const before = await scene(page);
+  await ask(page, 'Frame the character with the camera');
+  await expect(page.getByRole('region', { name: 'Director proposal' })).toBeVisible();
+  await page.getByRole('button', { name: 'Clear director chat', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Director proposal' })).toHaveCount(0);
+  await expect(page.locator('.director-message')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'What are we making?', exact: true })).toBeVisible();
+  expect(await scene(page)).toEqual(before);
+  const sessionState = await page.evaluate(async () => {
+    const storePath = '/src/core/store.ts', sessionPath = '/src/core/directorSession.ts';
+    const studio = (await import(storePath)).studio;
+    return (await import(sessionPath)).directorSession(studio.get().project.id).get();
+  });
+  expect(sessionState).toMatchObject({ messages: [], proposal: null, execution: null, busy: false, error: '' });
+});
+
 test('director places a relative marker through preview and approval then builds a desk there', async ({ page }) => {
   await openDirector(page);
   await page.evaluate(async () => { const path = '/src/core/store.ts'; const studio = (await import(path)).studio; studio.setValue([2, 0, -1]); });
