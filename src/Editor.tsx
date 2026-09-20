@@ -67,7 +67,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
   }, [menu]);
   useEffect(() => {
     function keyboard(e: KeyboardEvent) {
-      if (!active || saving || naming || studio.get().phoneControl || studio.get().exporting || studio.get().camera === 'ar' || dialogOpen) return;
+      if (!active || saving || naming || studio.get().phoneControl || studio.get().exporting || dialogOpen) return;
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') { e.preventDefault(); void save(); return; }
       if (e.code === 'Space' && !menu && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const target = e.target as HTMLElement;
@@ -110,7 +110,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
   }, [dialogOpen]);
 
   return <div className="app-shell">
-    <header className="app-header" inert={saving || s.phoneControl || s.exporting || s.camera === 'ar'}>
+    <header className="app-header" inert={saving || s.phoneControl || s.exporting}>
       <button className="brand" aria-label="Back to projects" title="Save and return to projects" onClick={() => void save(true)}><span className="brand-mark"><Shapes size={23} strokeWidth={1.6} /></span><span>composition</span></button>
       <nav className="editor-modes" aria-label="Editor modes">
         <button className="icon-button" aria-label="Objects" title="Objects" aria-pressed={sidePanel === 'objects'} onClick={() => toggleSide('objects')}><Shapes size={19} /></button>
@@ -157,7 +157,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
         finally { setSaving(false); e.target.value = ''; }
       }} />
     </header>
-    <div className={`workspace ${sidePanel ? 'with-panel' : ''}`} inert={saving || s.exporting || s.camera === 'ar'}>
+    <div className={`workspace ${sidePanel ? 'with-panel' : ''}`} inert={saving || s.exporting}>
     <main inert={s.phoneControl} className={`editor-main panel-${panel}${s.selectionActive && selectedObject && !s.playing && !s.preview ? ' has-selection' : ''}`}>
       <div className="stage-area"><Viewport active={active} />
         {s.preview && <div className="preview-banner">Suggestion preview · not applied</div>}
@@ -188,7 +188,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
           <span className="modal-symbol"><Diamond size={23} /></span><h2 id="modal-heading">A few simple moves.</h2>
           <ol><li>In <strong>Scene</strong>, click a body part to highlight it and open its controls. Click empty space to close them.</li><li>Drag the handles or enter values to pose the character. Edits save a key at the current time.</li><li><strong>Animate</strong> lets you play, scrub and retime those keys.</li><li>Turn on <strong>Demo mode</strong> in the three-dot menu to load a prepared idle. Turning it off keeps your existing keys.</li></ol>
           <div className="shortcut-grid"><span><kbd>G</kbd> Move</span><span><kbd>R</kbd> Rotate</span><span><kbd>S</kbd> Scale</span><span><kbd>K</kbd> Add key</span><span><kbd>Space</kbd> Play / pause</span><span><kbd>Ctrl Z</kbd> Undo</span></div>
-          <p className="help-disclosure">Open AR for a local camera overlay or room placement on supported devices. Aim at a floor or table, then place the scene. Choose Output to preview your composition, add video direction, and generate with Seedance. Live AI is optional.</p>
+          <p className="help-disclosure">Use the phone camera control to pair an iPhone and record handheld camera movement. Choose Output to preview your composition, add video direction, and generate with Seedance. Live AI is optional.</p>
         </>}
       </section>
     </div>}

@@ -5,7 +5,6 @@ import { studio, useStudio } from '../core/store';
 import { uid, type Project } from '../core/project';
 import { sceneSignature, videoReferences } from '../core/proposals';
 import { exportGuide } from '../scene/guideExport';
-import { changeCameraView } from '../scene/cameraNavigation';
 import { phoneCamera } from '../scene/phoneCamera';
 import OutputImages from './OutputImages';
 import ServiceIcon from './ServiceIcon';
@@ -112,7 +111,6 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
   const showBaseline = step > 1 && !!baseline && previewMode === 'baseline' && !(step === 3 && output);
   const currentGuide = !!generation && !stale && ready;
   const canContinue = currentGuide && reviewed;
-  const liveCamera = s.camera === 'camera' || s.camera === 'ar';
   const validDuration = Number.isInteger(s.project.duration) && s.project.duration >= 4 && s.project.duration <= 10;
   const canReviewGeneration = canContinue && !!prompt.trim() && references.length <= 9 && !imageBusy && !promptBusy && !staleBaseline;
   const canGenerate = canReviewGeneration && !s.project.demo && validDuration && capabilities?.fal;
@@ -145,12 +143,11 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
           <h2 id="output-step-title" tabIndex={-1} ref={heading}>{step === 1 ? 'Preview composition' : step === 2 ? 'Create the look' : output ? 'Video ready' : 'Generate video'}</h2>
           {step === 1 && <>
             <p className="output-copy">Review your framing and motion.</p>
-            {liveCamera && <div className="output-attention"><p>Stop camera / AR to create your preview. Live camera frames stay on this device.</p><button className="button secondary" onClick={() => void changeCameraView('orbit')}>Stop camera / AR</button></div>}
             {s.phoneControl && <div className="output-attention"><p>Finish phone control to use your saved camera motion.</p><button className="button secondary" onClick={phoneCamera.stop}>Stop phone control</button></div>}
             {!s.project.objects.some(o => !o.hidden) && <p className="inline-error">Add a visible object in the editor before creating a preview.</p>}
             {capabilities && !capabilities.videoExport && <p className="inline-error">Video export is unavailable on the server. Install the video encoder and restart the server.</p>}
             {stale && <p className="inline-error">Your composition has changed. Create a new preview to include your edits.</p>}
-            <button className={`button ${currentGuide ? 'secondary' : 'primary'} wide`} disabled={busy || pending || imageBusy || liveCamera || s.phoneControl || !capabilities?.videoExport || !s.project.objects.some(o => !o.hidden)} onClick={capture}><Film size={16} />{busy ? 'Preparing preview…' : generation ? 'Create new preview' : 'Create preview'}</button>
+            <button className={`button ${currentGuide ? 'secondary' : 'primary'} wide`} disabled={busy || pending || imageBusy || s.phoneControl || !capabilities?.videoExport || !s.project.objects.some(o => !o.hidden)} onClick={capture}><Film size={16} />{busy ? 'Preparing preview…' : generation ? 'Create new preview' : 'Create preview'}</button>
             {busy && <div className="output-progress" role="status"><progress max={s.project.duration} value={s.exporting ? s.time : s.project.duration} /><p>{s.exporting ? `Recording ${s.time.toFixed(1)} / ${s.project.duration} seconds. Export pauses if this tab is hidden.` : 'Preparing your MP4 preview…'}</p></div>}
             {currentGuide && <label className="review-check"><input type="checkbox" checked={reviewed} disabled={busy} onChange={e => setReviewed(e.target.checked)} />I’ve reviewed this composition</label>}
             <button className="button primary wide" aria-label="Continue to video direction" disabled={busy || !canContinue} onClick={() => setStep(2)}>Continue<ArrowRight size={16} /></button>

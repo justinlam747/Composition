@@ -11,15 +11,21 @@ async function ready(page: Page) { await page.goto('/#editor'); await expect(pag
 test('camera view moves the saved camera, supports keyframes and reload, and keeps scene navigation separate', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await ready(page);
-  await page.locator('.camera-switch').getByRole('button', { name: 'Camera view', exact: true }).click();
+  const cameraSwitch = page.locator('.camera-switch');
+  await expect(cameraSwitch.getByRole('button')).toHaveText(['Orbit', 'Camera view']);
+  await expect(page.getByRole('button', { name: 'Phone camera', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'AR', exact: true })).toHaveCount(0);
+  await cameraSwitch.getByRole('button', { name: 'Camera view', exact: true }).click();
   await expect(page.getByLabel('Camera frame', { exact: true })).toBeVisible();
   const initial = await cameraState(page);
   expect(initial.project.camera).toBeDefined();
   await page.keyboard.down('KeyW'); await page.waitForTimeout(350); await page.keyboard.up('KeyW');
   const moved = await cameraState(page);
   expect(moved.project.tracks.find((t: any) => t.objectId === '__shot_camera__' && t.channel === 'position').keys[0].value).not.toEqual(initial.project.camera.position);
+  await page.getByRole('button', { name: 'Scene menu', exact: true }).click();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   expect((await cameraState(page)).project.tracks).toEqual(initial.project.tracks);
+  await page.getByRole('button', { name: 'Scene menu', exact: true }).click();
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await page.getByRole('button', { name: 'Animate', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Camera animation timeline' })).toBeVisible();
@@ -42,16 +48,15 @@ test('camera view moves the saved camera, supports keyframes and reload, and kee
   expect(errors).toEqual([]);
 });
 
-test('camera is selectable, editable without scale controls, deletable and undoable', async ({ page }) => {
+test('camera is selectable without scale controls, deletable and undoable', async ({ page }) => {
   await ready(page); await page.getByRole('button', { name: 'Objects', exact: true }).click();
   await page.getByRole('button', { name: 'Add camera', exact: true }).click();
   await page.getByRole('button', { name: 'Close objects panel', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Camera', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Scale', exact: true })).toHaveCount(0);
-  const x = page.getByRole('spinbutton', { name: 'position X', exact: true }); await x.fill('1.25'); await x.press('Enter');
-  expect((await cameraState(page)).project.tracks[0].keys[0].value[0]).toBe(1.25);
-  await page.getByRole('button', { name: 'Delete camera', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Set camera from this view', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Scale model', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Delete');
   expect((await cameraState(page)).project.camera).toBeUndefined();
+  await page.getByRole('button', { name: 'Scene menu', exact: true }).click();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   expect((await cameraState(page)).project.camera).toBeDefined();
 });
@@ -147,6 +152,7 @@ test('guide export replays the scene camera while the editor is in Orbit view', 
     studio.import(JSON.stringify(project));
   });
   expect((await cameraState(page)).camera).toBe('orbit');
+  await page.getByRole('button', { name: 'Scene menu', exact: true }).click();
   await page.getByRole('button', { name: 'Output', exact: true }).click();
   await page.getByRole('button', { name: 'Create preview', exact: true }).click();
   const guide = page.getByLabel('Guide preview', { exact: true });

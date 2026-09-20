@@ -48,25 +48,13 @@ Open the **Animations folder at the top right → Load Spider-Man demo** to load
 
 Portable files are [the scene](public/demos/spider-man.scene.json), [the animation library](public/demos/spider-man.animations.json), [the generation provenance](public/demos/spider-man.provenance.json), and [a rendered guide MP4](public/demos/spider-man-guide.mp4). Use **Open scene** for the scene JSON or the library import button for the animation JSON. With `FAL_KEY` in `.env`, `npx tsx scripts/generate-spider-motion.ts` generates and caches the three original FBX files in `data/spider-man-hunyuan`; reruns resume saved requests and reuse completed results. `npx tsx scripts/retarget-spider-motion.ts` prepares candidate JSON for review; add `--publish` after reviewing to replace the bundled demo. Export a fresh guide in the app after changing motion. The demo takes nine seconds with a final one-second hold inside the ten-second scene limit. The old `scripts/export-spider-demo.ts` produces the authored fallback samples and should not be used to publish the AI demo.
 
-## Camera and AR
+## Cameras
 
 **Phone camera** connects an ARKit iPhone companion to the Mac or Windows editor for live position/orientation control, a returned virtual-shot preview, and editable recorded camera blocks. Run `npm run dev:phone`, then open the phone icon to pair. The companion Xcode project is in `ios/CompositionCamera.xcodeproj`; building/installing it requires a Mac. See [setup, controls and device acceptance](docs/phone-camera.md) and the [JPEG vs WebRTC latency experiment](docs/phone-latency-experiment.md). The native app compiles for iPhoneOS; physical iPhone acceptance and measured device latency remain required.
 
 **Camera view** adds a scene camera and looks through its fixed 16:9 frame. Drag in the frame to aim, use WASD to move, and Q/E to move down/up (Shift moves faster). These edits save position and rotation keys at the current playhead; choose another time in **Animate** to build a camera move. **Key camera** keys both channels. Drag timeline keys to retime the move, or use the **Velocity** lane to adjust its speed. No lens settings are needed.
 
 The camera also appears in **Objects**. Select it to use Move/Rotate handles or numeric values, or choose **Set camera from this view** to align it to the editor view. **Orbit** navigates the editor without changing the saved camera. Camera poses and keys survive autosave, project save, JSON export/import, and undo/redo. When a scene camera exists, guide export renders through it and replays its keys regardless of the current editor view. Older scenes without a camera retain export from the current view.
-
-Open **AR** beside Orbit and Handheld. **Start camera** overlays the current 3D scene on a live local video feed; drag to orbit and scroll to frame the objects. Choose another camera or enable **Mirror camera** in the controls. This mode does not track the room: moving the webcam does not keep objects fixed to real surfaces. Handheld remains a virtual camera controlled by mouse and keyboard.
-
-**Place in room** uses WebXR on compatible AR hardware. The session requires surface hit testing and DOM overlay controls. Aim at a floor or table until the placement ring appears, then tap or choose **Place here**. The whole scene is placed in meters, preserving object offsets and animation keys. Use **Play animation**, **Place again**, or **Exit AR**. Placement is temporary and is not saved in scene JSON. Depth occlusion, persistent anchors, and camera recording are not implemented.
-
-Camera access needs HTTPS or a loopback address. A phone needs the app served from a trusted HTTPS origin or a USB localhost forwarding setup; opening a PC's plain HTTP LAN address is insufficient. The default development server remains local to this computer. Runtime capability detection controls availability; a desktop webcam alone does not provide room tracking. See [WebXR hit testing](https://immersive-web.github.io/hit-test/) and [camera secure-context requirements](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia).
-
-The feature requests video only. Camera frames remain in the browser and never enter guide export or AI requests. Stop camera / AR before exporting a guide. Stop, switching to Orbit, Handheld or Camera view, leaving the page, and hiding an ordinary camera tab release the webcam. Closing the AR controls leaves a visible stop-camera badge.
-
-The real Microsoft LifeCam overlay was checked locally. Automated tests cover camera cancellation/errors/cleanup, desktop/mobile controls, room placement transforms, and session failure recovery. Physical room tracking, walking around objects, and orientation changes during a real AR session still require acceptance on compatible hardware.
-
-Three.js is pinned to 0.183.2 with a small `patch-package` patch for sessions ended during asynchronous XR initialization. `npm install` applies it automatically; do not skip install scripts. The patch covers the ESM/CommonJS runtime and source modules. Before upgrading Three, run the actual WebXRManager interruption regressions in `tests/ar.test.ts` and check whether upstream has incorporated the fix.
 
 ## Optional AI
 
@@ -82,7 +70,7 @@ Suggestions have an editable JSON view and **Preview in scene**. Preview never e
 
 ## Guide and output video
 
-1. Frame and optionally animate the scene camera, then click the visible **Output** button. This opens a separate output page; **Back to editor** restores the scene and framing. Scenes without a camera use the current Orbit or Handheld view.
+1. Frame and optionally animate the scene camera, then click the visible **Output** button. This opens a separate output page; **Back to editor** restores the scene and framing. Scenes without a camera use the current Orbit view.
 2. **Preview composition:** choose **Create preview** to record the animation through the scene camera, replaying its keys, with editor helpers removed. Keep the tab visible. The server converts the recording to an H.264 MP4. Play the preview, check **I've reviewed this composition**, then continue. You can download this composition MP4 without calling fal. After editing the scene, create a new preview.
 3. **Direction:** enter instructions and review the optional appearance references. Generate images with **Gemini** here, download them, and check **Use for video** to send selected images to Seedance. Images are generated from their own text prompt; the scene is not modified. Each project stores up to 24 generated images, and video requests accept nine unique references including object references. Instructions and images remain saved when you return to editing or reload. Image requests use saved IDs, so checking status or recovering a lost response does not submit another paid request.
 4. **Generate & download:** review the settings, resolve any listed prerequisites, and choose **Generate with Seedance**. This uploads the guide and references to fal and starts a paid request using your account. Demo mode can be turned off here without changing the animation.
