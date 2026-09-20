@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FolderPlus, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 export default function ProjectNameDialog({ name, title, action, onSubmit, onClose }: {
   name: string; title: string; action: string; onSubmit: (name: string) => Promise<void>; onClose: () => void;
@@ -25,7 +25,6 @@ export default function ProjectNameDialog({ name, title, action, onSubmit, onClo
       catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save this project. Please try again.'); setBusy(false); }
     }}>
       <button type="button" className="modal-close icon-button" aria-label="Close dialog" disabled={busy} onClick={onClose}><X size={20} /></button>
-      <span className="modal-symbol"><FolderPlus size={23} /></span>
       <h2 id="project-dialog-title">{title}</h2>
       <label className="field-label">Project name<input ref={input} value={value} maxLength={120} required disabled={busy} onChange={event => setValue(event.target.value)} placeholder="Untitled take" /></label>
       {error && <p className="inline-error" role="alert">{error}</p>}

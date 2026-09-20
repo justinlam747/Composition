@@ -601,6 +601,7 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 }
 .project-dialog { color: var(--text); border: 1px solid var(--line); max-width: calc(100vw - 32px); }
 .project-dialog::backdrop { background: oklch(25% .01 90 / .25); }
+.project-dialog h2 { margin-top: 0; }
 .project-dialog .dialog-actions { margin-top: 24px; }
 .project-dialog .inline-error { margin: 16px 0 0; }
 .project-name-action span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
