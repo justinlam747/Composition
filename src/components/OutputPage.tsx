@@ -79,7 +79,6 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
   async function submit(project: Project, id: string, instructions: string) {
     setBusy(true); setError('');
     try {
-      if (!studio.persistNow()) throw new Error('This browser could not save the request ID. Free browser storage and retry. No video request was sent.');
       // Keep the request reachable from Saved projects even if this panel closes or
       // another project becomes current before the provider responds.
       await api.saveProject(project);

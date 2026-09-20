@@ -189,6 +189,29 @@ test('an image request survives a lost response and reload without another provi
   expect(submissions).toEqual([id]);
 });
 
+test('browser quota failure does not block server-backed image generation', async ({ page }) => {
+  await openOutput(page); await createPreview(page);
+  await page.getByRole('checkbox', { name: /reviewed this composition/ }).check();
+  await page.getByRole('button', { name: 'Continue to video direction' }).click();
+  await page.getByRole('textbox', { name: 'Video instructions', exact: true }).fill('Server storage recovery test');
+  await page.evaluate(() => {
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (key === 'take-one-scene-v1') throw new DOMException('Quota exceeded', 'QuotaExceededError');
+      return setItem.call(this, key, value);
+    };
+  });
+  const submitted = page.waitForRequest(request => request.url().endsWith('/api/image-jobs') && request.method() === 'POST');
+  await page.getByRole('button', { name: 'Generate images', exact: true }).click();
+  const requestId = (await submitted).postDataJSON().id;
+  await expect(page.getByRole('img', { name: 'Image 1 - First frame', exact: true })).toBeVisible({ timeout: 15000 });
+  const project = await scene(page);
+  const saved = await page.evaluate(async id => (await fetch(`/api/projects/${id}`)).json(), project.id);
+  expect(saved.generation.imageRequest.id).toBe(requestId);
+  expect(saved.generation.imageAssetIds).toHaveLength(2);
+  await expect(page.getByRole('alert')).toBeHidden();
+});
+
 test('image provider failures offer a deliberate new request and preserve the composition', async ({ page }) => {
   await openOutput(page); await createPreview(page);
   await page.getByRole('checkbox', { name: 'I’ve reviewed this composition' }).check();

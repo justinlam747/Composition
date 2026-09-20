@@ -104,7 +104,7 @@ Guide and image uploads use fal storage, keeping this server on loopback. The re
 
 After restart, jobs with provider IDs resume polling. A preparing job without one fails with an ambiguity message: check fal before manually retrying because it may have accepted the request. Atomic JSON writes serialize record access to avoid Windows read/rename races. Run one server process per data directory and back up the whole directory, including `.bin` assets.
 
-The browser requires successful local and server project saves before submitting a video request. If storage is unavailable, submission stops and the panel offers an explicit retry. Switching projects during submission leaves the request reachable from Saved projects. Undo and redo retain the current project's generation metadata; changing the scene can mark its guide stale without losing the running job or completed output.
+The client requires a successful server project save before submitting an image or video request. Browser draft storage is only a best-effort recovery cache and never gates provider submission. If server storage is unavailable, submission stops and the panel offers an explicit retry. Switching projects during submission leaves the request reachable from Saved projects. Undo and redo retain the current project's generation metadata; changing the scene can mark its guide stale without losing the running job or completed output.
 
 ## Image generation
 

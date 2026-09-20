@@ -64,7 +64,6 @@ export default function OutputImages({ configured, disabled, prompt, continueDis
     submittingRef.current = true; setSubmitting(true); setError(''); setRequestError('');
     let dispatched = false;
     try {
-      if (!studio.persistNow()) throw new Error('Could not save the image request. Free browser storage and retry. No request was sent.');
       const project = studio.get().project;
       await api.saveProject(project);
       dispatched = true;

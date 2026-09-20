@@ -110,7 +110,7 @@ The app opens to **Projects**, with a sidebar for all projects, the six most rec
 
 In the editor, use the **Save current project** icon, **Ctrl+S / Cmd+S**, or **Scene menu ? Save project**. Click **composition** or **Scene menu ? All projects** to save and return home. **Rename project** is in the scene menu. Switching saved projects, creating another project, and importing scene JSON save the current draft before replacing it. A failed save keeps the current project available for retry. Opening a different project starts a fresh undo history.
 
-Projects and media are stored in `data/studio/` on the local server; this is not cloud storage. The browser also keeps a recovery draft. Refreshing `#editor` stays in the editor; opening the app's root URL opens the project home.
+Projects, generated models, images, videos, and media are stored in `data/studio/` on the local server; this is not cloud storage. The browser keeps only a best-effort recovery draft, and browser quota failures do not block generation after the project is saved to the server. Refreshing `#editor` stays in the editor; opening the app's root URL opens the project home.
 
 ## Director: chat, voice, props and motion
 
