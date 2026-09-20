@@ -456,6 +456,8 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 .clip-lane { display: flex; min-height: 66px; padding-right: var(--rail-right); border-bottom: 1px solid var(--line); }
 .clip-rail { position: relative; flex: 1; min-width: 0; background: var(--bg); touch-action: none; }
 .clip-track-hint { pointer-events: none; display: block; padding: 23px 12px; font-size: 10px; color: var(--faint); }
+.manual-key-marker { position: absolute; top: 50%; z-index: 1; width: 28px; height: 32px; padding: 0; display: grid; place-items: center; color: var(--muted); transform: translate(-50%, -50%); }
+.manual-key-marker:hover, .manual-key-marker:focus-visible { color: var(--accent); }
 .animation-block { position: absolute; top: 7px; height: 51px; min-width: 5px; background: var(--accent-soft); border: 1px solid var(--line); border-radius: 10px; cursor: grab; display: flex; align-items: center; overflow: hidden; touch-action: none; z-index: 2; }
 .animation-block.is-selected { border-color: var(--faint); box-shadow: inset 0 0 0 1px var(--faint); }
 .animation-block > span { display: block; padding: 6px 13px; min-width: 0; pointer-events: none; }

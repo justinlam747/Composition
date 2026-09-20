@@ -80,6 +80,29 @@ test('camera-only projects retain a valid timeline selection through import and 
   expect((await cameraState(page)).objectId).toBe('__shot_camera__');
 });
 
+test('camera manual keys stay visible and open from the animation blocks timeline', async ({ page }) => {
+  await ready(page);
+  await page.evaluate(async () => {
+    const corePath = '/src/core/project.ts', storePath = '/src/core/store.ts';
+    const { makeProject, makeCamera, putKey, CAMERA_ID } = await import(corePath); const { studio } = await import(storePath);
+    let project = { ...makeProject(), duration: 5, camera: makeCamera() };
+    for (const time of [0, 2.5, 5]) {
+      project = putKey(project, 'model', 'position', time, [time / 5, 1.3, 4], 'linear', undefined, CAMERA_ID);
+      project = putKey(project, 'model', 'rotation', time, [0, time / 10, 0], 'linear', undefined, CAMERA_ID);
+    }
+    studio.import(JSON.stringify(project));
+  });
+  await page.getByRole('button', { name: 'Animations', exact: true }).click();
+  await page.getByRole('button', { name: 'Add Drop to floor', exact: true }).click();
+  await page.getByRole('button', { name: 'Close animations panel', exact: true }).click();
+  const middleKey = page.getByRole('button', { name: 'Camera manual key at 2.50 seconds', exact: true });
+  await expect(middleKey).toBeVisible();
+  await middleKey.click();
+  await expect(page.getByRole('region', { name: 'Camera animation timeline' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Animated object' })).toHaveValue('__shot_camera__');
+  await expect(page.getByRole('slider', { name: 'Timeline playhead' })).toHaveValue('2.5');
+});
+
 test('guide export replays the scene camera while the editor is in Orbit view', async ({ page }) => {
   test.setTimeout(120000);
   await ready(page);

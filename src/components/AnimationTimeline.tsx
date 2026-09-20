@@ -1,7 +1,7 @@
 import { useRef } from 'react';
-import { Play, Pause, Scissors, Save, Trash2 } from 'lucide-react';
+import { Diamond, Play, Pause, Scissors, Save, Trash2 } from 'lucide-react';
 import { animationLibrary } from '../core/animationLibrary';
-import { CAMERA_ID, type AnimationClip } from '../core/project';
+import { CAMERA_ID, motionSceneTime, type AnimationClip } from '../core/project';
 import { studio, useStudio } from '../core/store';
 
 function ClipBlock({ clip, duration }: { clip: AnimationClip; duration: number }) {
@@ -55,20 +55,27 @@ export default function AnimationTimeline({ onManual }: { onManual: (id: string)
     </div>
     <div className="timeline-content"><div className="timeline-tracks">
       <div className="timeline-ruler"><div className="ruler-label">Animation</div><div className="ruler-ticks">{Array.from({ length: s.project.duration + 1 }, (_, i) => <span key={i} style={{ left: `${i / s.project.duration * 100}%` }}>{i}<small>s</small></span>)}</div></div>
-      <div className="clip-lanes">{objects.map(object => <div className="clip-lane" key={object.id}>
-        <button className="lane-label" onClick={() => { studio.selectObject(object.id); if (!s.project.clips?.some(clip => clip.objectId === object.id)) onManual(object.id); }}>{object.name}</button>
-        <div className="clip-rail" aria-label={`${object.name} animation track`} onPointerDown={event => { if (event.target === event.currentTarget) { const rect = event.currentTarget.getBoundingClientRect(); studio.seek((event.clientX - rect.left) / rect.width * s.project.duration); } }}
-          onDragOver={event => { if (event.dataTransfer.types.includes('application/x-composition-animation')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
-          onDrop={event => {
-            event.preventDefault(); const asset = animationLibrary.get().find(value => value.id === event.dataTransfer.getData('application/x-composition-animation')); if (!asset) return;
-            const expected = object.id === CAMERA_ID ? 'camera' : s.project.objects.find(value => value.id === object.id)?.kind;
-            if (asset.kind !== expected) { studio.patch({ status: 'Drop this animation onto a matching object track.' }); return; }
-            const rect = event.currentTarget.getBoundingClientRect(); studio.selectObject(object.id); studio.addAnimation(asset, (event.clientX - rect.left) / rect.width * s.project.duration);
-          }}>
-          {s.project.clips?.filter(clip => clip.objectId === object.id).map(clip => <ClipBlock key={clip.id} clip={clip} duration={s.project.duration} />)}
-          {!s.project.clips?.some(clip => clip.objectId === object.id) && <span className="clip-track-hint">{s.project.tracks.some(track => track.objectId === object.id) ? 'Manual keys · select to edit' : 'Drop animation here'}</span>}
-        </div>
-      </div>)}</div>
+      <div className="clip-lanes">{objects.map(object => {
+        const clips = s.project.clips?.filter(clip => clip.objectId === object.id) ?? [];
+        const manualTimes = [...new Set(s.project.tracks.filter(track => track.objectId === object.id).flatMap(track => track.keys.map(key => motionSceneTime(s.project, key.time, object.id))))]
+          .filter(time => time >= 0 && time <= s.project.duration).sort((a, b) => a - b);
+        return <div className="clip-lane" key={object.id}>
+          <button className="lane-label" onClick={() => { studio.selectObject(object.id); if (!clips.length) onManual(object.id); }}>{object.name}</button>
+          <div className="clip-rail" aria-label={`${object.name} animation track`} onPointerDown={event => { if (event.target === event.currentTarget) { const rect = event.currentTarget.getBoundingClientRect(); studio.seek((event.clientX - rect.left) / rect.width * s.project.duration); } }}
+            onDragOver={event => { if (event.dataTransfer.types.includes('application/x-composition-animation')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
+            onDrop={event => {
+              event.preventDefault(); const asset = animationLibrary.get().find(value => value.id === event.dataTransfer.getData('application/x-composition-animation')); if (!asset) return;
+              const expected = object.id === CAMERA_ID ? 'camera' : s.project.objects.find(value => value.id === object.id)?.kind;
+              if (asset.kind !== expected) { studio.patch({ status: 'Drop this animation onto a matching object track.' }); return; }
+              const rect = event.currentTarget.getBoundingClientRect(); studio.selectObject(object.id); studio.addAnimation(asset, (event.clientX - rect.left) / rect.width * s.project.duration);
+            }}>
+            {clips.map(clip => <ClipBlock key={clip.id} clip={clip} duration={s.project.duration} />)}
+            {!clips.length && manualTimes.map(time => <button key={time} className="manual-key-marker" aria-label={`${object.name} manual key at ${time.toFixed(2)} seconds`}
+              style={{ left: `${time / s.project.duration * 100}%` }} onClick={() => { studio.selectObject(object.id); studio.seek(time); onManual(object.id); }}><Diamond size={11} fill="currentColor" /></button>)}
+            {!clips.length && !manualTimes.length && <span className="clip-track-hint">Drop animation here</span>}
+          </div>
+        </div>;
+      })}</div>
       <div className="playhead-area"><div className="playhead" style={{ left: `${s.time / s.project.duration * 100}%` }}><span /></div><input className="scrubber" type="range" aria-label="Timeline playhead" min="0" max={s.project.duration} step={1 / 30} value={s.time} onChange={event => studio.seek(Number(event.target.value))} /></div>
     </div>
     </div>
