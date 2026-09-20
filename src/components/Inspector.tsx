@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Diamond, X } from 'lucide-react';
+import { Diamond, Focus, X } from 'lucide-react';
 import { api, assetUrl } from '../core/api';
 import { BONES, CAMERA_ID, clipAt, clipSourceTime, type Channel, type Vec3, sample } from '../core/project';
 import { clipPreview } from '../core/clips';
@@ -27,13 +27,19 @@ export default function Inspector({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const object = s.project.objects.find(o => o.id === s.objectId);
   const isCamera = s.objectId === CAMERA_ID && !!s.project.camera;
+  async function centerView() {
+    if (s.camera !== 'orbit') await changeCameraView('orbit');
+    const current = studio.get();
+    if (current.objectId !== s.objectId || current.project.id !== s.project.id) return;
+    studio.patch({ frameRequest: current.frameRequest + 1, selectionActive: true });
+  }
   async function saveObject() { if (!object) return; setBusy(true); setError(''); try { await api.saveObject({ ...object, scale: sample(s.project, 'model', 'scale', s.time, object.id) }); studio.patch({ status: 'Object saved to your library.' }); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
   const project = clipPreview(s.project, s.editingClip), clip = clipAt(project, s.time, s.objectId);
   const value = sample(project, s.selected, s.channel, s.time, s.objectId);
   const onKey = (clip?.tracks ?? project.tracks).find(t => t.objectId === s.objectId && t.target === s.selected && t.channel === s.channel)?.keys.some(k => Math.abs(k.time - (clip ? clipSourceTime(clip, s.time) : s.time)) < 1 / 60);
   const channels: Channel[] = isCamera ? ['position', 'rotation'] : s.selected === 'model' ? ['position', 'rotation', 'scale'] : ['rotation'];
   return <aside className="inspector" aria-label="Pose controls">
-    <div className="inspector-heading"><h2>{isCamera ? 'Camera' : object?.kind === 'humanoid' ? 'Pose' : object?.name ?? 'Object'}</h2><button className="icon-button" aria-label="Close pose controls" onClick={onClose}><X size={18} /></button></div>
+    <div className="inspector-heading"><h2>{isCamera ? 'Camera' : object?.kind === 'humanoid' ? 'Pose' : object?.name ?? 'Object'}</h2><button className="icon-button center-object" title="Center view on this object" onClick={() => void centerView()}><Focus size={15} />Center view</button><button className="icon-button" aria-label="Close pose controls" onClick={onClose}><X size={18} /></button></div>
     {object?.kind === 'humanoid' && <label className="joint-select-label"><span className="sr-only">Selected joint</span><select aria-label="Selected joint" value={s.selected} onChange={e => studio.select(e.target.value, e.target.value === 'model' ? 'position' : 'rotation')}><option value="model">Whole character</option>{BONES.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>}
     <div className="transform-row"><div className="transform-tabs">{channels.map(channel => <button key={channel} className={s.channel === channel ? 'selected' : ''} onClick={() => studio.setMode(channel === 'position' ? 'translate' : channel === 'rotation' ? 'rotate' : 'scale')}>{channel === 'position' ? 'Move' : channel === 'rotation' ? 'Rotate' : 'Scale'}</button>)}</div>{s.selected === 'model' && <select className="space-select" aria-label="Transform coordinate space" value={s.space} onChange={e => studio.patch({ space: e.target.value as 'local' | 'world' })}><option value="world">World</option><option value="local">Local</option></select>}</div>
     <div className="axis-fields">{value.map((v, i) => <AxisInput key={`${s.selected}:${s.channel}:${i}`} axis={i} value={v} channel={s.channel} onCommit={n => { const current = studio.get(); const updated = [...sample(clipPreview(current.project, current.editingClip), s.selected, s.channel, current.time, s.objectId)] as Vec3; updated[i] = n; studio.setValue(updated); }} />)}</div>

@@ -128,9 +128,10 @@ kbd { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--
 .empty-scene h2 { font-size: 20px; font-weight: 600; margin: 14px 0 20px; }
 .viewport-error { z-index: 5; font-size: 13px; line-height: 1.7; }
 .inspector { position: absolute; z-index: 6; top: 80px; right: 16px; width: 298px; padding: 17px; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); box-shadow: 0 8px 32px oklch(25% .01 90 / .07); }
-.inspector-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.inspector-heading h2 { font-size: 15px; font-weight: 650; }
-.inspector-heading .icon-button { width: 28px; height: 28px; border-radius: 9px; }
+.inspector-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.inspector-heading h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 650; }
+.inspector-heading .icon-button { flex-shrink: 0; width: 28px; height: 28px; border-radius: 9px; }
+.inspector-heading .center-object { width: auto; gap: 5px; padding: 0 7px; font-size: 11px; }
 .joint-select-label { display: block; margin-bottom: 13px; }
 .joint-select-label select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg); border-radius: 11px; font-size: 12px; min-height: 42px; }
 .transform-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 12px; }
