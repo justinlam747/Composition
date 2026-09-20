@@ -112,7 +112,11 @@ test('generates and downloads images in output, selects video references, and ke
   await expect(page.locator('.output-services img')).toHaveCount(2);
   const colors = await page.locator('.output-shell').evaluate(node => { const style = getComputedStyle(node); return { accent: style.getPropertyValue('--accent').trim(), text: style.getPropertyValue('--text').trim() }; });
   expect(colors.accent).toBe(colors.text);
-  await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('A sunlit room with oak furniture');
+  const direction = page.getByRole('textbox', { name: 'Video instructions', exact: true });
+  await direction.fill('A sunlit room with oak furniture');
+  await expect(page.locator('.output-layout > .output-images')).toBeVisible();
+  await expect(page.locator('.output-direction-actions')).toContainText('Upload images');
+  await expect(page.locator('.output-direction-actions')).toContainText('Continue');
   await page.getByRole('button', { name: 'Generate images', exact: true }).click();
   await expect(page.getByRole('img', { name: 'Image 1 - First frame', exact: true })).toBeVisible({ timeout: 15000 });
   const generated = await scene(page), assetId = generated.generation.imageAssetIds[0];
@@ -123,7 +127,7 @@ test('generates and downloads images in output, selects video references, and ke
   expect((await scene(page)).generation.baselineAssetId).toBe(assetId);
   const pairIds = (await scene(page)).generation.imageAssetIds;
   expect(pairIds).toHaveLength(2);
-  await page.getByRole('textbox', { name: 'Video instructions' }).fill('Use the room reference and follow the composition');
+  await direction.fill('Use the room reference and follow the composition');
   await expect(page.getByRole('button', { name: 'Continue to generation' })).toBeEnabled();
   await page.screenshot({ path: 'test-results/output-images-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -153,7 +157,7 @@ test('an image request survives a lost response and reload without another provi
   await page.getByRole('button', { name: 'Continue to video direction' }).click();
   const submissions: string[] = [];
   await page.route('**/api/image-jobs', async route => { submissions.push(route.request().postDataJSON().id); await route.fetch(); await route.abort('failed'); });
-  await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('Image recovery test');
+  await page.getByRole('textbox', { name: 'Video instructions', exact: true }).fill('Image recovery test');
   await page.getByRole('button', { name: 'Generate images', exact: true }).click();
   await expect.poll(() => submissions.length).toBe(1);
   const id = (await scene(page)).generation.imageRequest.id;
@@ -172,11 +176,11 @@ test('image provider failures offer a deliberate new request and preserve the co
   await page.getByRole('checkbox', { name: 'I’ve reviewed this composition' }).check();
   await page.getByRole('button', { name: 'Continue to video direction' }).click();
   const before = await scene(page);
-  await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('FAIL_IMAGE_TEST');
+  await page.getByRole('textbox', { name: 'Video instructions', exact: true }).fill('FAIL_IMAGE_TEST');
   await page.getByRole('button', { name: 'Generate images', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Test image generation failed');
   await page.getByRole('button', { name: 'Start another image' }).click();
-  await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('A new image');
+  await page.getByRole('textbox', { name: 'Video instructions', exact: true }).fill('A new image');
   await page.getByRole('button', { name: 'Generate images', exact: true }).click();
   await expect(page.getByRole('img', { name: 'Image 1 - First frame', exact: true })).toBeVisible({ timeout: 15000 });
   expect((await scene(page)).objects).toEqual(before.objects);
@@ -187,8 +191,7 @@ test('unsubmitted image requests and definitive rejections do not block video ou
   await openOutput(page); await createPreview(page);
   await page.getByRole('checkbox', { name: 'I’ve reviewed this composition' }).check();
   await page.getByRole('button', { name: 'Continue to video direction' }).click();
-  await page.getByRole('textbox', { name: 'Video instructions' }).fill('Follow the composition');
-  await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('Optional image');
+  await page.getByRole('textbox', { name: 'Video instructions' }).fill('Optional image');
   let submissions = 0;
   page.on('request', request => { if (request.url().endsWith('/api/image-jobs') && request.method() === 'POST') submissions++; });
   await page.route('**/api/projects/*', route => route.request().method() === 'PUT' ? route.fulfill({ status: 503, json: { error: { code: 'SAVE_FAILED', message: 'Project save failed' } } }) : route.continue());
@@ -226,7 +229,7 @@ test('uploads and removes input images, preserving deletion across reload', asyn
   await expect(page.locator('.output-image-grid figure')).toHaveCount(0);
 });
 
-test('optimizes and reoptimizes prompts directly in both fields', async ({ page }) => {
+test('optimizes and reoptimizes the shared direction field', async ({ page }) => {
   await openOutput(page); await createPreview(page);
   await page.getByRole('checkbox', { name: /reviewed this composition/ }).check();
   await page.getByRole('button', { name: 'Continue to video direction' }).click();
@@ -241,10 +244,7 @@ test('optimizes and reoptimizes prompts directly in both fields', async ({ page 
   expect(requests[1]).toMatchObject({ prompt: 'Toy hero in a subway', previous: expect.stringContaining('soft light') });
   await direction.fill('My edited cinematic direction');
   await expect(direction).toHaveValue('My edited cinematic direction');
-  await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('Handmade clay');
-  await page.getByRole('button', { name: 'Optimize visual baseline prompt' }).click();
-  await expect(page.getByRole('textbox', { name: 'Image prompt', exact: true })).toHaveValue(/Handmade clay.*soft light/);
-  await expect(page.getByRole('button', { name: 'Reoptimize visual baseline prompt' })).toBeEnabled();
+  await expect(page.getByRole('textbox')).toHaveCount(1);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results-output/prompts-mobile.png', fullPage: true });
@@ -254,7 +254,7 @@ test('deleted generated frames stay removed after job polling on reload', async 
   await openOutput(page); await createPreview(page);
   await page.getByRole('checkbox', { name: /reviewed this composition/ }).check();
   await page.getByRole('button', { name: 'Continue to video direction' }).click();
-  await page.getByRole('textbox', { name: 'Image prompt', exact: true }).fill('Toy subway');
+  await page.getByRole('textbox', { name: 'Video instructions', exact: true }).fill('Toy subway');
   await page.getByRole('button', { name: 'Generate images', exact: true }).click();
   await expect(page.locator('.output-image-grid figure')).toHaveCount(2);
   await page.getByRole('button', { name: 'Use image 1 as baseline' }).click();
@@ -278,7 +278,7 @@ test('generates repeatedly from the optimized prompt and every upload without a 
   await page.getByLabel('Upload reference images').setInputFiles(Array.from({ length: 30 }, (_, i) => ({ name: `reference-${i}.png`, mimeType: 'image/png', buffer: Buffer.concat([png, Buffer.from(String(i))]) })));
   await expect(page.locator('.output-image-grid figure')).toHaveCount(30, { timeout: 30000 });
   const generate = page.getByRole('button', { name: 'Generate images', exact: true });
-  const prompt = page.getByRole('textbox', { name: 'Image prompt', exact: true });
+  const prompt = page.getByRole('textbox', { name: 'Video instructions', exact: true });
   await prompt.fill('Toy hero in a subway');
   await expect(generate).toBeEnabled();
   await expect(page.getByRole('combobox', { name: 'Image options' })).toHaveCount(0);
@@ -288,7 +288,7 @@ test('generates repeatedly from the optimized prompt and every upload without a 
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   await page.route('**/api/output-prompts', async route => { await held; await route.continue(); });
-  await page.getByRole('button', { name: 'Optimize visual baseline prompt' }).click();
+  await page.getByRole('button', { name: 'Optimize video direction prompt' }).click();
   await expect(generate).toBeDisabled();
   release();
   await expect(prompt).toHaveValue(/Toy hero in a subway.*soft light/);

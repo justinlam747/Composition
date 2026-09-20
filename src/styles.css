@@ -626,7 +626,8 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 .output-steps button:disabled { opacity: .65; }
 .step-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; }
 .step-icon svg { width: 18px; height: 18px; }
-.output-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 28px; align-items: start; }
+.output-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); grid-template-areas: "preview controls" "baseline controls"; gap: 20px 28px; align-items: start; }
+.output-preview-column { grid-area: preview; min-width: 0; }
 .output-preview { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
 .output-preview-heading { display: flex; justify-content: space-between; gap: 12px; padding: 8px 8px 18px; font-size: 11px; font-weight: 650; }
 .output-preview-heading > span:last-child { font-size: 10px; font-weight: 500; color: var(--muted); white-space: nowrap; }
@@ -639,7 +640,7 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 .output-preview-caption { display: flex; align-items: flex-start; gap: 10px; padding: 18px 8px 8px; color: var(--muted); }
 .output-preview-caption p { font-size: 10px; line-height: 1.8; }
 .output-guide-download { display: inline-flex; align-items: center; gap: 7px; margin: 12px 8px 8px; }
-.output-step-content { display: flex; flex-direction: column; gap: 14px; padding: 4px 0; min-width: 0; }
+.output-step-content { grid-area: controls; display: flex; flex-direction: column; gap: 14px; padding: 4px 0; min-width: 0; }
 .output-step-content h2 { font-size: 17px; font-weight: 650; letter-spacing: -.35px; }
 .output-step-content h2:focus { outline: none; }
 .output-copy { font-size: 11px; line-height: 1.7; color: var(--muted); }
@@ -670,8 +671,7 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 .output-section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .output-section-title h3 { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 650; }
 .output-section-title h3 > span { color: var(--muted); font-weight: 400; font-size: 9px; margin-left: 2px; }
-.output-images { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line); }
-.output-images textarea { min-height: 70px; }
+.output-images { grid-area: baseline; display: flex; flex-direction: column; gap: 10px; padding: 18px 8px 0; border-top: 1px solid var(--line); }
 .output-images > .button { align-self: flex-start; }
 .output-image-status { display: flex; flex-direction: column; gap: 8px; font-size: 11px; color: var(--muted); }
 .output-image-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -687,6 +687,8 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 .output-frame-source strong { font-size: 11px; font-weight: 600; }
 .output-frame-source p { font-size: 10px; line-height: 1.6; color: var(--muted); margin-top: 4px; }
 .output-image-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.output-direction-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+.output-direction-actions .button { min-width: 0; }
 .output-image-actions select { font: inherit; font-size: 11px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
 .output-image-grid img { aspect-ratio: 16 / 9; }
 .output-image-grid .is-baseline { border-color: var(--text); box-shadow: 0 0 0 1px var(--text); }
@@ -711,7 +713,7 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
   .output-steps button { gap: 8px; padding: 8px 0; min-height: 42px; font-size: 11px; }
   .step-icon { width: 18px; height: 18px; }
   .step-icon svg { width: 16px; height: 16px; }
-  .output-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .output-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "preview" "controls" "baseline"; gap: 20px; }
   .output-preview-empty { padding: 20px 14px; gap: 10px; }
   .output-preview-icon { width: 42px; height: 42px; }
   .output-preview-icon svg { width: 21px; height: 21px; }

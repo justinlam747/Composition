@@ -27,6 +27,7 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null), [connectionError, setConnectionError] = useState('');
   const [connectionVersion, setConnectionVersion] = useState(0);
   const [imageBusy, setImageBusy] = useState(!!generation?.imageRequest);
+  const [promptBusy, setPromptBusy] = useState(false);
   const [previewMode, setPreviewMode] = useState<'baseline' | 'motion'>('baseline');
   const heading = useRef<HTMLHeadingElement>(null);
   const mounted = useRef(true);
@@ -113,7 +114,7 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
   const canContinue = currentGuide && reviewed;
   const liveCamera = s.camera === 'camera' || s.camera === 'ar';
   const validDuration = Number.isInteger(s.project.duration) && s.project.duration >= 4 && s.project.duration <= 10;
-  const canReviewGeneration = canContinue && !!prompt.trim() && references.length <= 9 && !imageBusy && !staleBaseline;
+  const canReviewGeneration = canContinue && !!prompt.trim() && references.length <= 9 && !imageBusy && !promptBusy && !staleBaseline;
   const canGenerate = canReviewGeneration && !s.project.demo && validDuration && capabilities?.fal;
   const resultDuration = job?.duration ?? guideDuration;
   const previewDuration = step === 3 && output ? resultDuration : generation ? guideDuration : s.project.duration;
@@ -121,13 +122,18 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
     if (generation) { const { jobId: _jobId, outputAssetId: _output, ...retained } = generation; studio.generation(retained); }
     setJob(null); setReviewed(false); setStep(1); setError('');
   }
+  function updateDirection(value: string) {
+    setPrompt(value);
+    const current = studio.get().project.generation;
+    if (current) studio.generation({ ...current, instructions: value, imagePrompt: value });
+  }
   return <div className="output-shell">
     <header className="output-header"><div className="brand"><Shapes size={19} /><span>composition</span><span className="output-divider">/</span><span className="output-header-label">Output</span></div><button className="button secondary" disabled={busy || s.exporting} onClick={onBack}><ArrowLeft size={15} />Back to editor</button></header>
     <main className="output-main" aria-label="Output workflow">
       <div className="output-title"><div><h1>Output</h1><p>{s.project.name}</p></div><div className="output-services"><span className="service-label"><ServiceIcon service="gemini" />Gemini <small>Images</small></span><span className="service-label"><ServiceIcon service="fal" />fal <small>Video</small></span></div></div>
       <nav aria-label="Output steps"><ol className="output-steps">{steps.map((label, index) => { const StepIcon = stepIcons[index]; return <li key={label}><button aria-current={step === index + 1 ? 'step' : undefined} disabled={busy || index === 1 && !canContinue || index === 2 && !jobId && !output && !canReviewGeneration} onClick={() => setStep(index + 1)}><span className="step-icon" aria-hidden="true"><StepIcon size={13} /></span><span>{label}</span></button></li>; })}</ol></nav>
       <div className="output-layout">
-        <section className="output-preview" aria-label="Composition preview">
+        <div className="output-preview-column"><section className="output-preview" aria-label="Composition preview">
           <div className="output-preview-heading"><span>{step === 3 && output ? 'Your generated video' : showBaseline ? 'Your visual baseline' : 'Your composition'}</span><span>{showBaseline ? '16:9' : `${previewDuration === null ? '—' : Math.round(previewDuration * 100) / 100}s · 720p · 16:9`}</span></div>
           {step > 1 && baseline && !(step === 3 && output) && <div className="output-preview-tabs" aria-label="Compare baseline and motion"><button aria-pressed={previewMode === 'baseline'} onClick={() => setPreviewMode('baseline')}>Visual baseline</button><button aria-pressed={previewMode === 'motion'} onClick={() => setPreviewMode('motion')}>Motion guide</button></div>}
           {showBaseline && <img className="output-baseline-preview" src={assetUrl(baseline!)} alt="Selected video baseline" />}
@@ -136,6 +142,7 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
           <div className="output-preview-caption"><Film size={14} /><p>{step === 3 && output ? 'Seedance output' : showBaseline ? 'Chosen look · Video follows your composition’s motion' : s.project.camera ? 'Scene camera · Includes camera motion' : 'Current editor framing'}</p></div>
           {generation && <a className="text-link output-guide-download" href={assetUrl(generation.guideAssetId, true)} download><Download size={14} />Download composition MP4</a>}
         </section>
+        </div>
         <section className="output-step-content" aria-labelledby="output-step-title">
           <h2 id="output-step-title" tabIndex={-1} ref={heading}>{step === 1 ? 'Preview composition' : step === 2 ? 'Create the look' : output ? 'Video ready' : 'Generate video'}</h2>
           {step === 1 && <>
@@ -152,21 +159,19 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
             <p className="output-note">Free preview. No AI credits used.</p>
           </>}
           {step === 2 && <>
-            <OutputPromptField target="video" title={<span className="field-label">Video direction</span>} value={prompt} onChange={value => { setPrompt(value); studio.videoInstructions(value); }} configured={!!capabilities?.gemini} disabled={pending || !!output || !!stale} context={generation?.imagePrompt} />
+            <OutputPromptField target="video" title={<span className="field-label">Direction</span>} value={prompt} onChange={updateDirection} configured={!!capabilities?.gemini} disabled={pending || !!output || !!stale} onBusyChange={setPromptBusy} />
             <div className="output-references"><h3>Video references <span>{references.length} / 9</span></h3>{references.length > 0 && <div className="reference-strip">{references.map((id, i) => <div key={id}><img src={assetUrl(id)} alt={`Video reference ${i + 1}`} /><button aria-label={`Remove video reference ${i + 1}`} disabled={busy || pending || !!output || imageBusy} onClick={() => { const next = excludeVideoReference(studio.get().project, id); if (next) { studio.generation(next); void api.saveProject(studio.get().project).catch(cause => setError(cause.message)); } }}><X size={13} /></button></div>)}</div>}</div>
             {references.length > 9 && <p className="inline-error">Remove reference images to use nine or fewer.</p>}
             {staleBaseline && <p className="inline-error">Choose a baseline from the current preview before continuing.</p>}
           </>}
-          {generation && <div hidden={step !== 2}><OutputImages configured={!!capabilities?.gemini} disabled={busy || pending || !!output || !!stale} onBusyChange={setImageBusy} /></div>}
           {step === 2 && <>
-            <button className="button primary wide" aria-label="Continue to generation" disabled={!canReviewGeneration} onClick={() => setStep(3)}>Continue<ArrowRight size={16} /></button>
             <button className="text-link" onClick={() => setStep(1)}>Back to preview</button>
           </>}
           {step === 3 && <>
             <div className="output-provider"><ServiceIcon service="bytedance" /><strong>Seedance</strong><span>via</span><ServiceIcon service="fal" /><span>fal</span></div>
             {stale && (jobId || output) && <p className="output-copy output-attention">This request uses an earlier version of your composition. Your request and any finished video stay available here.</p>}
             <dl className="output-summary"><div><dt>Video</dt><dd>{jobId || output ? resultDuration ?? '—' : s.project.duration}s · 720p · 16:9</dd></div><div><dt>Audio</dt><dd>Off</dd></div><div><dt>References</dt><dd>{jobId ? job ? `${job.referenceAssetIds.length} images` : 'Checking…' : `${references.length} images`}</dd></div></dl>
-            <OutputPromptField target="video" title={<span className="field-label">Video direction</span>} value={prompt} onChange={value => { setPrompt(value); studio.videoInstructions(value); }} configured={!!capabilities?.gemini} disabled={pending || !!output || !!stale} context={generation?.imagePrompt} />
+            <OutputPromptField target="video" title={<span className="field-label">Direction</span>} value={prompt} onChange={updateDirection} configured={!!capabilities?.gemini} disabled={pending || !!output || !!stale} />
             {!jobId && !output && <>
               {!canContinue && <div className="output-attention"><p>Review a current preview before generating.</p><button className="button secondary" onClick={() => setStep(1)}>Review preview</button></div>}
               {s.project.demo && <div className="output-attention"><p>Turn off Demo mode to generate. Your animation stays intact.</p><button className="button secondary" onClick={studio.disableDemo}>Turn off Demo mode</button></div>}
@@ -183,6 +188,7 @@ export default function OutputPage({ onBack }: { onBack: () => void }) {
           {error && <p role="alert" className="inline-error">{error}</p>}
           {connectionError ? <div className="output-attention" role="alert"><p>{connectionError}</p><button className="button secondary" onClick={() => setConnectionVersion(value => value + 1)}>Retry connection</button></div> : !capabilities && <p className="output-note" role="status">Checking output connection…</p>}
         </section>
+        {generation && step === 2 && <OutputImages configured={!!capabilities?.gemini} disabled={busy || pending || !!output || !!stale || promptBusy} prompt={prompt} continueDisabled={!canReviewGeneration} onContinue={() => setStep(3)} onBusyChange={setImageBusy} />}
       </div>
     </main>
   </div>;
