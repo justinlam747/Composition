@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createProp } from './prop';
 import type { ProjectPreview } from '../core/projectPreview';
 import { toQuaternion } from '../core/project';
 import { createMannequin, type Mannequin } from './mannequin';
@@ -22,12 +23,12 @@ function createPreviewRenderer() {
   const rim = new THREE.DirectionalLight('#b0c7ba', 2); rim.position.set(-3, 3, -3); scene.add(rim);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshStandardMaterial({ color: '#e6e4df', roughness: 1 }));
   ground.rotation.x = -Math.PI / 2; ground.position.y = -.015; ground.receiveShadow = true; scene.add(ground);
-  const geometry = new THREE.BoxGeometry(1, 1, 1);
-  const material = new THREE.MeshStandardMaterial({ color: '#cdc7bc', roughness: .7 });
+  let props: ReturnType<typeof createProp>[] = [];
   let mannequin: Mannequin | undefined;
 
   return {
     async capture(preview: ProjectPreview) {
+      props.forEach(prop => prop.dispose()); props = [];
       content.clear();
       const hasHumanoid = preview.objects.some(object => object.kind === 'humanoid');
       if (hasHumanoid && !mannequin) {
@@ -35,11 +36,10 @@ function createPreviewRenderer() {
         mannequin.markers.forEach(marker => { marker.visible = false; });
       }
       for (const object of preview.objects) {
-        const root = object.kind === 'humanoid' ? mannequin!.root : new THREE.Group();
+        const prop = object.kind === 'box' ? createProp(object) : undefined;
+        const root = prop ? prop.root : mannequin!.root;
         if (object.kind === 'box') {
-          const mesh = new THREE.Mesh(geometry, material);
-          mesh.scale.fromArray(object.dimensions); mesh.position.y = object.dimensions[1] / 2;
-          mesh.castShadow = mesh.receiveShadow = true; root.add(mesh);
+          props.push(prop!);
         } else {
           mannequin!.setHeroAppearance(object.appearance === 'spider');
           for (const [id, rotation] of Object.entries(preview.pose)) mannequin!.setJointPose(id, rotation);
@@ -69,7 +69,7 @@ function createPreviewRenderer() {
       return renderer.domElement.toDataURL('image/jpeg', .85);
     },
     dispose() {
-      mannequin?.dispose(); webLine.dispose(); geometry.dispose(); material.dispose(); ground.geometry.dispose(); ground.material.dispose();
+      mannequin?.dispose(); webLine.dispose(); props.forEach(prop => prop.dispose()); ground.geometry.dispose(); ground.material.dispose();
       light.shadow.map?.dispose(); renderer.dispose(); renderer.forceContextLoss();
     },
   };

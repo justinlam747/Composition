@@ -1,6 +1,7 @@
 import { Euler, MathUtils, Matrix4, Quaternion, Vector3 } from 'three';
 import { validateVelocityKeys, velocitySceneTime, velocityTime, type VelocityKey, type VelocityTrack, type VelocityWindow } from './velocity';
 import { validateValueHandles, valueProgress, type Axis, type ValueHandles } from './valueGraph';
+import { propGeometrySchema, type PropGeometry } from './propGeometry';
 
 export type Vec3 = [number, number, number];
 export type Channel = 'position' | 'rotation' | 'scale';
@@ -27,6 +28,7 @@ export interface SceneObject {
   dimensions: Vec3; position: Vec3; rotation: Vec3; scale: Vec3; referenceAssetIds: string[];
   hidden?: boolean;
   appearance?: 'spider';
+  geometry?: PropGeometry;
 }
 export interface ImageRequest { id: string; prompt: string; guideAssetId?: string; count?: number; paired?: boolean; referenceAssetIds?: string[] }
 export interface Generation {
@@ -277,6 +279,7 @@ export function validateProject(input: unknown): Project {
   if (p.camera !== undefined && (!p.camera || !validVec(p.camera.position) || !validVec(p.camera.rotation))) throw new Error('Invalid camera pose.');
   const objects = new Map<string, SceneObject>();
   for (const o of p.objects) {
+    if (o?.geometry !== undefined && (o.kind !== 'box' || !propGeometrySchema.safeParse(o.geometry).success)) throw new Error('Invalid prop geometry.');
     if (!o || !validId(o.id) || o.id === CAMERA_ID || objects.has(o.id) || !['humanoid', 'box'].includes(o.kind) ||
       (o.kind === 'humanoid' ? o.id !== HUMANOID_ID : o.id === HUMANOID_ID) || typeof o.name !== 'string' || !o.name.trim() || o.name.length > 120 ||
       !validVec(o.dimensions, .05, 20) || !validVec(o.position) || !validVec(o.rotation) || !validVec(o.scale, .05, 10) ||

@@ -34,5 +34,5 @@ export function createShotCamera(scene: THREE.Scene) {
     guide.position.copy(camera.position); guide.quaternion.copy(camera.quaternion); guide.updateMatrixWorld(true);
   }
   show(false);
-  return { camera, body, sync, show, dispose() { scene.remove(camera, body, helper); body.geometry.dispose(); body.material.dispose(); helper.dispose(); } };
+  return { camera, body, helper, sync, show, dispose() { scene.remove(camera, body, helper); body.geometry.dispose(); body.material.dispose(); helper.dispose(); } };
 }

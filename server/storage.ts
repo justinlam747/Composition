@@ -10,7 +10,7 @@ export class AppError extends Error { constructor(public status: number, public 
 export class FileStore {
   private operations = new Map<string, Promise<unknown>>();
   constructor(readonly root: string) {}
-  async init() { await Promise.all(['assets', 'projects', 'objects', 'proposals', 'jobs', 'image-jobs', 'motion-jobs', 'tmp'].map(dir => mkdir(path.join(this.root, dir), { recursive: true }))); }
+  async init() { await Promise.all(['assets', 'projects', 'objects', 'proposals', 'jobs', 'image-jobs', 'motion-jobs', 'director-proposals', 'director-executions', 'tmp'].map(dir => mkdir(path.join(this.root, dir), { recursive: true }))); }
   file(collection: string, id: string, extension = 'json') {
     if (!validId(id)) throw new AppError(400, 'INVALID_ID', 'Invalid record ID.');
     return path.join(this.root, collection, `${id}.${extension}`);

@@ -2,7 +2,7 @@ import { BONES, CAMERA_ID, sample, type Project, type SceneObject, type ShotCame
 import { sampleWebEffect, type WebEffect } from './webEffect';
 
 export interface ProjectPreview {
-  objects: Pick<SceneObject, 'id' | 'kind' | 'dimensions' | 'position' | 'rotation' | 'scale' | 'appearance'>[];
+  objects: Pick<SceneObject, 'id' | 'kind' | 'dimensions' | 'position' | 'rotation' | 'scale' | 'appearance' | 'geometry'>[];
   pose: Record<string, Vec3>;
   camera?: ShotCamera;
   web?: WebEffect;
@@ -13,7 +13,7 @@ export function projectPreview(project: Project): ProjectPreview {
   const web = sampleWebEffect(project, 0);
   return {
     objects: project.objects.filter(object => !object.hidden).map(object => ({
-      id: object.id, kind: object.kind, dimensions: object.dimensions, appearance: object.appearance,
+      id: object.id, kind: object.kind, dimensions: object.dimensions, appearance: object.appearance, geometry: object.geometry,
       position: sample(project, 'model', 'position', 0, object.id),
       rotation: sample(project, 'model', 'rotation', 0, object.id),
       scale: sample(project, 'model', 'scale', 0, object.id),

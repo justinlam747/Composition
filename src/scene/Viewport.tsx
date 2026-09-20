@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { createProp } from './prop';
+import { registerDirectorCapture } from './directorCapture';
 import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -68,26 +70,28 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     const groundMaterial = new THREE.MeshStandardMaterial({ color: '#e6e4df', roughness: 1 });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial); ground.rotation.x = -Math.PI / 2; ground.position.y = -.015; ground.receiveShadow = true; scene.add(ground);
     const grid = new THREE.GridHelper(40, 80, '#b5b4ae', '#d1d0c9'); grid.position.y = -.009; scene.add(grid);
+    const placement = new THREE.Mesh(new THREE.RingGeometry(.1, .15, 40), new THREE.MeshBasicMaterial({ color: '#9c652f', side: THREE.DoubleSide, depthTest: false }));
+    placement.rotation.x = -Math.PI / 2; placement.renderOrder = 100; placement.visible = false; scene.add(placement);
     const arExperience = new ARExperience({ renderer, scene, content, camera, orbit, ground, video: video.current!, overlay: xrOverlay.current!, changed: setAR,
       modeChanged: mode => studio.patch({ camera: mode === 'idle' ? 'orbit' : mode, playing: false, selectionActive: false }),
     });
     experience.current = arExperience;
     let model: Mannequin | null = null;
     const webLine = createWebLine(content);
-    const props = new Map<string, { root: THREE.Group; mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial> }>();
+    const props = new Map<string, ReturnType<typeof createProp>>();
     function syncObjects(project: Project, time: number) {
-      for (const [id, prop] of props) if (!project.objects.some(o => o.id === id)) { content.remove(prop.root); prop.mesh.geometry.dispose(); prop.mesh.material.dispose(); props.delete(id); }
+      for (const [id, prop] of props) if (!project.objects.some(o => o.id === id)) { content.remove(prop.root); prop.dispose(); props.delete(id); }
       for (const object of project.objects) {
         let root: THREE.Object3D | undefined;
         if (object.kind === 'humanoid') root = model?.root;
         else {
           let prop = props.get(object.id);
-          if (!prop) {
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: '#cdc7bc', roughness: .7 }));
-            mesh.castShadow = true; mesh.receiveShadow = true; mesh.userData.objectId = object.id;
-            const group = new THREE.Group(); group.add(mesh); content.add(group); prop = { root: group, mesh }; props.set(object.id, prop);
+          if (!prop || prop.signature !== JSON.stringify(object.geometry)) {
+            if (prop) { content.remove(prop.root); prop.dispose(); }
+            prop = createProp(object); content.add(prop.root); props.set(object.id, prop);
+            lastSelection = ''; sizedSelection = '';
           }
-          prop.mesh.scale.fromArray(object.dimensions); prop.mesh.position.y = object.dimensions[1] / 2; root = prop.root;
+          prop.resize(object.dimensions); root = prop.root;
         }
         if (!root) continue;
         root.visible = !object.hidden;
@@ -220,8 +224,13 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       if (renderer.domElement.hasPointerCapture(event.pointerId)) renderer.domElement.releasePointerCapture(event.pointerId);
       if (studio.get().exporting || ['ar', 'shot'].includes(studio.get().camera) || studio.get().preview || dragging || transform.axis || start.distanceTo(new THREE.Vector2(event.clientX, event.clientY)) > 5) return;
       const rect = renderer.domElement.getBoundingClientRect(); pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1); ray.setFromCamera(pointer, camera);
+      if (studio.get().directorPicking) {
+        const point = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+        if (point && Math.abs(point.x) <= 20 && Math.abs(point.z) <= 20) studio.patch({ directorPlacement: [point.x, 0, point.z], directorPicking: false, status: 'Placement point set. Tell the director what belongs here.' });
+        return;
+      }
       const humanoidMeshes = model && hasCharacter(studio.get().project) ? (studio.get().showRig && studio.get().selectionActive ? [...model.markers.values(), ...model.meshes] : model.meshes) : [];
-      const hits = ray.intersectObjects([...humanoidMeshes, ...[...props.values()].filter(p => p.root.visible).map(p => p.mesh), ...(shot.body.visible ? [shot.body] : [])], false);
+      const hits = ray.intersectObjects([...humanoidMeshes, ...[...props.values()].filter(p => p.root.visible).flatMap(p => p.meshes), ...(shot.body.visible ? [shot.body] : [])], false);
       if (hits[0]) {
         const propId = hits[0].object.userData.objectId;
         if (propId) studio.selectObject(propId);
@@ -266,6 +275,8 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       const project = s.preview ?? editView ?? s.project;
       const inRoom = s.camera === 'ar';
       const inShot = s.camera === 'shot';
+      placement.visible = !!s.directorPlacement && !inRoom && !s.preview;
+      if (s.directorPlacement) placement.position.set(s.directorPlacement[0], .005, s.directorPlacement[2]);
       if (piloting && (!inShot || s.phoneControl || s.playing || s.exporting || s.preview)) blur();
       grid.visible = s.showGrid && s.camera !== 'camera' && !inRoom;
       arExperience.updateFrame(xrFrame);
@@ -279,7 +290,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
         model.helper.visible = !inRoom && !s.preview && s.selectionActive && s.showRig && hasCharacter(project);
         model.markers.forEach((marker, id) => { marker.visible = !inRoom && !s.preview && s.selectionActive && s.showRig; marker.scale.setScalar(id === s.selected ? 1.8 : 1); });
       }
-      props.forEach((prop, id) => prop.mesh.material.emissive.set(!inRoom && !s.preview && s.selectionActive && s.objectId === id && !s.playing ? '#372315' : '#000000'));
+      props.forEach((prop, id) => prop.meshes.forEach(mesh => mesh.material.emissive.set(!inRoom && !s.preview && s.selectionActive && s.objectId === id && !s.playing ? '#372315' : '#000000')));
       const selection = !inRoom && !inShot && !s.preview && s.selectionActive && hasTarget(project, s.objectId) && !s.playing ? `${s.objectId}:${s.selected}` : '';
       if (selection !== lastSelection) {
         const object = s.selected === 'model' ? selectedRoot() : model?.bones.get(s.selected);
@@ -304,7 +315,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
         const center = (selectedRoot()?.position.clone() ?? new THREE.Vector3()).add(new THREE.Vector3(0, 1, 0));
         camera.position.copy(center).add(new THREE.Vector3(3.1, 1.1, 5.2)); orbit.target.copy(center); camera.lookAt(center); frameRequest = s.frameRequest;
       }
-      orbit.enabled = !s.exporting && !dragging && (s.camera === 'orbit' || s.camera === 'camera');
+      orbit.enabled = !s.exporting && !dragging && !s.directorPicking && (s.camera === 'orbit' || s.camera === 'camera');
       if (orbit.enabled) orbit.update();
       if (inShot && !s.phoneControl && !s.playing && !s.preview && [...keys].some(key => movementKeys.has(key))) {
         beginPilot();
@@ -319,6 +330,22 @@ export default function Viewport({ active = true }: { active?: boolean }) {
         renderer.render(scene, shot.camera); renderer.setScissorTest(false); renderer.setViewport(0, 0, width, height);
         phoneCamera.preview(renderer.domElement, frame, width);
       } else renderer.render(scene, camera);
+    });
+    let directorRenderer: THREE.WebGLRenderer | undefined;
+    const unregisterDirector = registerDirectorCapture(() => {
+      const current = studio.get();
+      if (disposed || !model || dragging || current.exporting || current.phoneControl || current.camera === 'ar' || !activeView.current) throw new Error('Finish loading, dragging or capture before asking the director.');
+      directorRenderer ??= new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      directorRenderer.setPixelRatio(1); directorRenderer.setSize(768, 432); directorRenderer.toneMapping = renderer.toneMapping; directorRenderer.toneMappingExposure = renderer.toneMappingExposure;
+      const view = (current.camera === 'shot' ? shot.camera : camera).clone(); view.aspect = 16 / 9; view.updateProjectionMatrix();
+      const hidden = [grid, placement, transform.getHelper(), shot.body, shot.helper, model.helper, ...model.markers.values()];
+      const visible = hidden.map(object => object.visible);
+      try {
+        syncObjects(current.project, current.time); hidden.forEach(object => { object.visible = false; }); model.highlightJoint(null);
+        props.forEach(prop => prop.meshes.forEach(mesh => mesh.material.emissive.set(0)));
+        directorRenderer.render(scene, view);
+        return { image: directorRenderer.domElement.toDataURL('image/jpeg', .75), view: { position: view.position.toArray() as Vec3, rotation: fromQuaternion(view.quaternion), fov: view.fov } };
+      } finally { hidden.forEach((object, index) => { object.visible = visible[index]; }); lastProject = null; }
     });
     const unregisterExport = registerGuideExporter(async () => {
       await modelReady;
@@ -336,8 +363,8 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       studio.patch({ exporting: true, playing: false }); orbit.enabled = false; transform.detach(); lastSelection = '';
       try {
         shot.show(false);
-        grid.visible = false; model.helper.visible = false; model.highlightJoint(null); model.markers.forEach(marker => marker.visible = false);
-        props.forEach(prop => prop.mesh.material.emissive.set(0));
+        grid.visible = false; placement.visible = false; model.helper.visible = false; model.highlightJoint(null); model.markers.forEach(marker => marker.visible = false);
+        props.forEach(prop => prop.meshes.forEach(mesh => mesh.material.emissive.set(0)));
         const blob = await recordCanvas(capture.domElement, snapshot.duration, time => {
           syncObjects(snapshot, time);
           if (snapshot.camera) {
@@ -353,11 +380,11 @@ export default function Viewport({ active = true }: { active?: boolean }) {
       }
     });
     return () => {
-      disposed = true; blur(); unregisterNavigation(); unregisterExport(); renderer.setAnimationLoop(null); resize.disconnect(); renderer.xr.removeEventListener('sessionend', resizeViewport); shot.dispose(); webLine.dispose();
+      disposed = true; blur(); unregisterNavigation(); unregisterExport(); unregisterDirector(); directorRenderer?.dispose(); placement.geometry.dispose(); placement.material.dispose(); renderer.setAnimationLoop(null); resize.disconnect(); renderer.xr.removeEventListener('sessionend', resizeViewport); shot.dispose(); webLine.dispose();
       void arExperience.dispose().finally(() => renderer.dispose()); experience.current = null;
       renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('pointercancel', blur);
       window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', blur); document.removeEventListener('visibilitychange', visibility);
-      if (dragging) studio.end(); transform.dispose(); orbit.dispose(); model?.dispose(); props.forEach(p => { p.mesh.geometry.dispose(); p.mesh.material.dispose(); }); grid.geometry.dispose();
+      if (dragging) studio.end(); transform.dispose(); orbit.dispose(); model?.dispose(); props.forEach(p => p.dispose()); grid.geometry.dispose();
       (Array.isArray(grid.material) ? grid.material : [grid.material]).forEach(m => m.dispose()); groundGeometry.dispose(); groundMaterial.dispose(); keyLight.shadow.map?.dispose(); renderer.domElement.remove();
     };
   }, []);
@@ -366,6 +393,7 @@ export default function Viewport({ active = true }: { active?: boolean }) {
     <div ref={host} className="canvas-host"><div className={`shot-frame${frameMinimized ? ' is-minimized' : ''}`} hidden={state.camera !== 'shot'} aria-label="Camera frame"><span>Camera · 16:9</span></div></div>
     {state.camera === 'shot' && <button className="camera-frame-toggle icon-button" title={frameMinimized ? 'Show camera overlay' : 'Minimize camera overlay'} aria-label={frameMinimized ? 'Show camera overlay' : 'Minimize camera overlay'} aria-pressed={frameMinimized} onClick={() => setFrameMinimized(value => !value)}>{frameMinimized ? <Maximize2 size={18} /> : <Minimize2 size={18} />}</button>}
     {error && <div className="viewport-error" role="alert">{error}</div>}
+    {state.directorPicking && <div className="director-placement-hint" role="status">Click the floor to place your marker <button onClick={() => studio.patch({ directorPicking: false })}>Cancel</button></div>}
     <div className="viewport-top">{state.camera !== 'shot' && <button className="frame-button icon-button" title="Frame selection (F)" aria-label="Frame character" onClick={() => studio.patch({ frameRequest: state.frameRequest + 1 })}><Focus size={19} /></button>}</div>
     {!state.preview && !state.exporting && !error && <div className="viewport-tools">
       <button title="Move model (G)" aria-label="Move model" className={state.mode === 'translate' ? 'active' : ''} onClick={() => studio.setMode('translate')}><Move size={18} /></button>

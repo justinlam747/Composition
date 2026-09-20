@@ -13,12 +13,14 @@ import { MotionJobs } from './motionJobs';
 import type { ImageJob, SavedObject } from '../src/core/api';
 import type { PhoneRelay } from './phoneRelay';
 import { promptTargetSchema } from '../src/core/outputPrompts';
+import { Director } from './director';
 
 export async function createApp(options: { dataDir?: string; providers?: (store: FileStore) => Providers; phone?: PhoneRelay } = {}) {
   const store = new FileStore(path.resolve(options.dataDir ?? process.env.DATA_DIR ?? 'data/studio')); await store.init();
   const providers = options.providers?.(store) ?? liveProviders(store), jobs = new Jobs(store, providers); await jobs.recover();
   const imageJobs = new ImageJobs(store, providers); await imageJobs.recover();
   const motionJobs = new MotionJobs(store, providers); await motionJobs.recover();
+  const director = new Director(store, providers, motionJobs); await director.recover();
   const app = express(); app.disable('x-powered-by');
   app.use('/api', (req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Cache-Control', 'no-store');
@@ -27,7 +29,7 @@ export async function createApp(options: { dataDir?: string; providers?: (store:
     if (origin && !allowed.has(origin)) return next(new AppError(403, 'ORIGIN_REJECTED', 'This origin is not allowed to access the local studio server.'));
     next();
   });
-  app.get('/api/capabilities', (_req, res) => res.json({ ...providers.configured, videoExport: videoExportAvailable }));
+  app.get('/api/capabilities', (_req, res) => res.json({ ...providers.configured, director: providers.configured.gemini, directorVoice: Boolean(process.env.GEMINI_API_KEY), videoExport: videoExportAvailable }));
   app.get('/api/phone', (_req, res) => res.json({ enabled: !!options.phone }));
   options.phone?.routes(app);
   app.post('/api/assets', express.raw({ type: ['image/*', 'video/*'], limit: '50mb' }), async (req, res) => {
@@ -51,6 +53,9 @@ export async function createApp(options: { dataDir?: string; providers?: (store:
     const input = z.object({ project: z.unknown(), target: promptTargetSchema, prompt: z.string().trim().min(1).max(4000), previous: z.string().max(4000).optional() }).strict().parse(req.body);
     res.json(await providers.refinePrompt(parseProject(JSON.stringify(input.project)), input.target, input.prompt, input.previous));
   });
+  app.post('/api/director/turns', async (req, res) => res.json(await director.turn(req.body)));
+  app.post('/api/director/proposals/:id/decision', async (req, res) => res.json(await director.decide(req.params.id, req.body)));
+  app.get('/api/director/executions/:id', async (req, res) => res.json(await director.get(req.params.id)));
   app.get('/api/projects', async (_req, res) => res.json((await store.list<ProjectRecord>('projects')).map(({ project, updatedAt }) => ({
     id: project.id, name: project.name, updatedAt, duration: project.duration,
     objectCount: project.objects.filter(object => !object.hidden).length,
@@ -104,5 +109,5 @@ export async function createApp(options: { dataDir?: string; providers?: (store:
     if ((error as { status?: number }).status === 413) return res.status(413).json({ error: { code: 'TOO_LARGE', message: 'This upload exceeds the size limit.' } });
     res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'The server could not complete this request. Your scene has not changed.' } });
   });
-  return { app, store, jobs, motionJobs };
+  return { app, store, jobs, motionJobs, director };
 }

@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { propGeometrySchema } from './propGeometry';
 import { BONES, HUMANOID_ID, makeObject, sample, uid, validateProject, type Project, type SceneObject, type Track, type Vec3 } from './project';
 
 const vector = z.tuple([z.number().finite().min(-10000).max(10000), z.number().finite().min(-10000).max(10000), z.number().finite().min(-10000).max(10000)]);
 const dimensions = z.tuple([z.number().min(.05).max(20), z.number().min(.05).max(20), z.number().min(.05).max(20)]);
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/);
-export const objectSpecSchema = z.object({ name: z.string().trim().min(1).max(120), kind: z.enum(['box', 'humanoid']), dimensions, scale: vector.refine(v => v.every(n => n >= .05 && n <= 10)).optional(), referenceAssetIds: z.array(id).max(9) }).strict();
+export const objectSpecSchema = z.object({ name: z.string().trim().min(1).max(120), kind: z.enum(['box', 'humanoid']), dimensions, scale: vector.refine(v => v.every(n => n >= .05 && n <= 10)).optional(), referenceAssetIds: z.array(id).max(9), geometry: propGeometrySchema.optional() }).strict();
 export type ObjectSpec = z.infer<typeof objectSpecSchema>;
 const keySchema = z.object({ time: z.number().finite().min(0).max(10), value: vector, ease: z.enum(['smooth', 'linear']) }).strict();
 export const proposalContentSchema = z.discriminatedUnion('kind', [

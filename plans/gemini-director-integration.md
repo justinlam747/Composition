@@ -1,249 +1,41 @@
-# Gemini Director Integration Plan
+﻿# Gemini Director integration
 
-## Product goal
+## Implemented experience
 
-Turn the editor into a live AI cinematography tool. A user pairs the iPhone, calibrates it to the scene camera, speaks or types a creative direction, and receives safe, previewable, editable camera and animation changes.
+The editor's microphone icon opens a nonmodal Director panel. Users can type or start a continuous Gemini Live conversation, hear spoken replies, interrupt, and keep working while the panel is minimized. Director clarifies ambiguous requests, presents a concrete proposal, and applies changes only after explicit approval of that revision.
 
-Demo line:
+For “add a desk here,” the user selects **Pick placement point** and clicks the scene floor. Gemini proposes a composite prop with a top and legs. Preview leaves the saved scene untouched; Apply creates an editable object as one undoable change. Composite geometry is preserved in saved projects, object assets, thumbnails and guide rendering.
 
-> Move the phone to direct the shot. Gemini watches the virtual take, understands the scene, and helps refine it like a cinematographer.
+Supported commands cover object creation, updates and deletion; static camera poses; camera and prop animation; Hunyuan humanoid motion; and clip retiming. Existing limits remain one humanoid, 32 objects and ten seconds. Unsupported or conflicting operations return clarification instead of silently changing unrelated animation.
 
-## Scope for the hackathon
+## Architecture
 
-### Must ship
+- `src/core/director.ts` defines a closed Zod action contract, compact scene context and pure atomic application. It reuses project validation, composition placements and clip helpers.
+- `server/director.ts` coordinates proposals and durable executions. Motion preparation calls the existing `MotionJobs` pipeline and `fal-ai/hunyuan-motion` only after approval.
+- `server/providers.ts` uses Gemini structured output. `server/directorSchema.ts` sends a compact provider-compatible schema, normalizes bare six-digit colors, and validates the result against the full contract.
+- `src/core/directorSession.ts` coordinates typed and live input, preview, explicit approval, recovery, status polling and application through the existing store/undo path.
+- `server/directorLive.ts` relays Gemini Live audio and the three closed tools `director_request`, `director_decision` and `director_status`. Credentials remain on the server.
+- `src/core/directorVoice.ts` and `public/director-audio.js` manage microphone capture, 16 kHz PCM input, 24 kHz playback, interruption and cleanup.
+- `src/core/propGeometry.ts` and `src/scene/prop.ts` provide shared composite geometry for the editor and saved previews.
 
-- Gemini-powered shot planning from a natural-language brief.
-- A live or near-live director panel that receives the current scene, camera state, phone calibration state, and a rendered scene preview.
-- Structured Gemini actions that map to existing editor operations.
-- Preview, accept, reject, and undo for every AI change.
-- One complete workflow: pair phone → calibrate → record camera take → ask Gemini to refine → preview → export guide.
-- A visible explanation of the AI contribution for the Gemini prize demo.
+HTTP endpoints are `POST /api/director/turns`, `POST /api/director/proposals/:id/decision`, and `GET /api/director/executions/:id`. Voice uses `/api/director/live`. Existing `/api/capabilities` exposes availability.
 
-### Stretch goals
+## Approval and recovery
 
-- Gemini Live voice conversation with spoken director cues.
-- Upload a recorded guide and receive a shot breakdown or continuity critique.
-- Generate storyboard frames and visual references for the current shot.
-- Generate a visual character or prop concept and add it as a reference asset.
+Every request carries its project/session identity and scene signature. A proposal has an ID and monotonically increasing revision. Scene edits invalidate the old approval; refresh rebases cached motion, produces a pending revision and requires approval again. A voice approval is bound to the proposal visible when that input turn began, and that turn can be consumed only once. Interrupted or cancelled tools cannot apply delayed responses.
 
-### Out of scope
+Execution records survive server restarts. A recovered execution requires review; it never replays automatically. Missing motion-job records can be recreated with their previously reserved ID. Completed motion is retained and added to the animation library. Cancelling prevents application even if a provider finishes later. A status lookup failure exposes a progress retry action.
 
-- Replacing the existing animation model or timeline.
-- Allowing Gemini to mutate project state without validation or user approval.
-- Sending private phone camera frames to Gemini. Use the virtual scene preview and phone pose data unless the user explicitly enables another input.
-- Building a general-purpose autonomous agent.
+Project mutations remain one atomic undo entry and use normal save/autosave. Conversation history and floor markers are transient. Closing Director, switching projects, navigating away or hiding the tab releases microphone resources. Minimizing retains conversation controls.
 
-## Proposed experience
+## Context and configuration
 
-1. The user opens **Director** and selects a goal such as reveal, chase, product-style hero shot, or emotional close-up.
-2. The user pairs the phone and presses **Calibrate**. The current phone pose becomes the reference for the scene camera.
-3. The user records a physical camera move. Existing phone motion code creates a camera clip.
-4. Gemini receives a compact scene snapshot, camera path summary, current guide preview or selected frames, and the user’s direction.
-5. Gemini returns an explanation plus validated actions such as slowing a move, adding a hold, changing a target, reframing an object, or adding a transition.
-6. The editor applies the proposal to a temporary preview state.
-7. The user previews it, accepts it as one undoable edit, or rejects it.
-8. The user exports the clean guide and optionally sends it through the existing video-generation flow.
+Gemini receives visible object state, selection, playhead, animation summaries, placement marker, camera state and a rendered virtual-scene JPEG. Physical camera feeds are excluded. Scene capture is unavailable during export, transforms, phone recording or AR.
 
-## Gemini capabilities to use
+Use server-only `GEMINI_API_KEY` and `FAL_KEY`. The planner uses `GEMINI_DIRECTOR_MODEL`, then `GEMINI_TEXT_MODEL`, then `gemini-2.5-flash`. Live voice defaults to `gemini-3.8-live`, overridable with `GEMINI_LIVE_MODEL`. Voice requires localhost or HTTPS, microphone permission and AudioWorklet support. `.env.example` lists the settings.
 
-### Phase 1: structured shot director
+## Verification
 
-Use the existing server-side Gemini request path and add a director-specific schema. The model should return JSON only, with an explanation and a bounded list of actions. Structured output is the execution contract; it is not trusted as raw project state.
+Unit/API tests cover atomic application, invalid targets and geometry, camera and animation edits, scale-animation conflicts, motion anchoring, approval/revision checks, cancellation and restart recovery. Relay tests cover audio/transcripts, cancelled/duplicate tools and resumption. Browser tests cover clarification, placement, preview, approval, stale refresh, undo/redo, save/reload, mobile layout, microphone denial/release and delayed voice approval cancellation.
 
-Suggested actions:
-
-- `set_camera_target`
-- `adjust_camera_key`
-- `scale_camera_clip`
-- `add_camera_hold`
-- `move_object_track`
-- `add_pose_key`
-- `set_scene_direction`
-- `request_storyboard`
-
-Every action must include a reason, affected IDs, and a confidence value. The server validates IDs, channels, time ranges, duration limits, and object ownership before returning the proposal.
-
-### Phase 2: visual shot critique
-
-Capture a short guide or selected frames from the virtual scene and ask Gemini to identify framing, pacing, continuity, and visibility issues. Return critique items linked to timestamps where possible. Critique is advisory until converted into a structured proposal.
-
-### Phase 3: Gemini Live director
-
-Add a WebSocket session for audio input and spoken output. Give the model a small function surface that calls proposal generation rather than mutating the scene directly. Start with commands such as “hold,” “wider,” “follow the subject,” and “make the reveal slower.”
-
-## Data contracts
-
-Add a director-specific contract near `src/core/proposals.ts`:
-
-```ts
-type DirectorAction =
-  | { kind: 'set_camera_target'; objectId: string; time: number; reason: string }
-  | { kind: 'adjust_camera_key'; keyId: string; value: [number, number, number]; reason: string }
-  | { kind: 'scale_camera_clip'; clipId: string; factor: number; reason: string }
-  | { kind: 'add_camera_hold'; time: number; duration: number; reason: string }
-  | { kind: 'add_pose_key'; objectId: string; target: string; time: number; value: [number, number, number]; reason: string };
-
-type DirectorProposal = {
-  id: string;
-  mode: 'live' | 'demo';
-  prompt: string;
-  baseSignature: string;
-  summary: string;
-  actions: DirectorAction[];
-};
-```
-
-The exact schema should reuse existing project types and validation helpers instead of duplicating track logic.
-
-The director context should be a compact derived object, not the entire renderer state:
-
-- Project duration and scene signature.
-- Visible objects, dimensions, references, and current transforms.
-- Camera transform and camera tracks.
-- Phone connection, calibration, and recording status.
-- Camera clip summaries and key timestamps.
-- Selected object and current playhead time.
-- User direction.
-
-## Backend changes
-
-### Provider layer
-
-- Add `director(project, context, prompt)` to the provider interface.
-- Keep Gemini credentials server-only.
-- Use a dedicated Gemini model/configuration for structured JSON.
-- Parse and validate the model response with Zod.
-- Return actionable provider errors for missing credentials, invalid model output, and quota failures.
-- Keep the existing object/composition/movement proposals working unchanged.
-
-### API routes
-
-Add routes in `server/app.ts`:
-
-- `POST /api/director/proposals` — create a validated proposal from scene context and prompt.
-- `POST /api/director/critique` — optional guide/frames critique endpoint.
-- `GET /api/director/capabilities` — expose structured director, critique, and live-session availability.
-
-Do not persist a proposal as project state until the client accepts it. Persist accepted edits through the existing project save/autosave path.
-
-### Live session
-
-For the stretch goal, add a separate server relay or provider session module. Keep the browser-to-server session separate from the existing phone WebSocket so phone pose transport remains deterministic and testable.
-
-## Frontend changes
-
-Add `src/components/DirectorPanel.tsx` with:
-
-- Direction input and example prompts.
-- Phone/calibration status.
-- Current scene and camera summary.
-- Record-take and stop-take controls.
-- Critique/proposal loading and error states.
-- Action list showing affected objects and timestamps.
-- Preview, Accept, Reject, and Undo controls.
-- Optional voice-session status.
-
-Add a director store slice or local state only if the existing store cannot represent temporary proposals. Preview state must remain separate from saved `Project` state, matching the existing proposal preview behavior.
-
-Extend the existing editor actions rather than adding a second camera-editing implementation. Camera edits should continue to flow through the current key and clip helpers, undo stack, `sceneSignature`, and persistence logic.
-
-## Asset and video inputs
-
-- Use the existing guide export as the canonical visual result.
-- For critique, either send the guide MP4 or extract a small number of representative frames server-side.
-- Keep the phone’s physical camera feed local by default.
-- Send phone orientation samples and the rendered virtual shot only when the director request is active.
-- Reuse existing asset roles and storage validation for any generated storyboard or reference images.
-
-## Validation and safety
-
-- Reject unknown object IDs, key IDs, clip IDs, tracks, targets, and channels.
-- Clamp camera and object values to the project’s existing bounds.
-- Reject edits outside the scene duration.
-- Reject overlapping camera blocks where the existing timeline disallows them.
-- Require the proposal base signature to match the current project before preview or accept.
-- Apply accepted actions atomically as one undoable change.
-- Never execute arbitrary function names returned by Gemini; map a closed set of action kinds to explicit application code.
-
-## Implementation order
-
-### Milestone 1: deterministic foundation
-
-- Add director context derivation.
-- Add Zod schemas for director actions and proposals.
-- Add pure action validation/application helpers.
-- Add unit tests for valid actions, stale signatures, invalid IDs, invalid times, and atomic failure.
-
-### Milestone 2: structured Gemini director
-
-- Add the provider method and server route.
-- Add a mocked provider fixture.
-- Add the Director panel.
-- Support camera-only actions first.
-- Add preview and accept/reject behavior.
-
-### Milestone 3: phone-directed workflow
-
-- Connect the panel to existing phone pairing and camera-take state.
-- Show calibration and recording state in the director UI.
-- Add the end-to-end flow from recorded phone take to Gemini refinement to guide export.
-
-### Milestone 4: visual critique
-
-- Add guide upload or frame sampling.
-- Return timestamped critique items.
-- Convert one critique type, such as pacing or framing, into a structured proposal.
-
-### Milestone 5: live voice stretch goal
-
-- Add a Gemini Live session.
-- Implement three spoken commands: hold, wider, and follow subject.
-- Route each command through the same proposal validation path.
-- Add a clear disconnect and fallback state.
-
-## Tests and verification
-
-### Unit tests
-
-- Director context excludes renderer instances and stays serializable.
-- Valid camera actions apply expected key or clip edits.
-- Invalid model output is rejected.
-- Stale proposals cannot be accepted.
-- Multiple actions apply atomically.
-- Undo and redo restore the project exactly.
-
-### API tests
-
-- Gemini-not-configured returns an actionable error.
-- Mocked director output produces a validated proposal.
-- Invalid provider output returns a safe error without mutating the project.
-- The route never persists unaccepted proposals.
-
-### Browser tests
-
-- Open Director panel and submit a direction.
-- Preview then reject leaves the scene unchanged.
-- Preview then accept creates one undoable edit.
-- Phone recording appears as director context.
-- Stale proposal is rejected after a scene edit.
-- Accepted proposal survives save/reload.
-- Guide export still works after a director edit.
-
-## Demo script
-
-1. Start with a humanoid, a generated or authored prop, and a scene camera.
-2. Open Director and say: “Make this a tense reveal. Keep the subject hidden, push in slowly, and hold before the reveal.”
-3. Pair the phone and calibrate it.
-4. Move the phone to create the rough shot.
-5. Ask Gemini to refine the take.
-6. Show the returned actions and preview the result.
-7. Accept the edit, undo it, then redo it to prove editability.
-8. Export the clean guide and show the final generated video.
-
-## Success criteria
-
-- The user can complete the phone → AI refinement → export loop in under two minutes.
-- Gemini actions are visibly grounded in the actual scene and camera take.
-- Every AI change is editable, previewable, and undoable.
-- The demo has one clear multimodal “wow” moment rather than several disconnected AI features.
-- The product still works in manual mode without Gemini credentials.
+Live smoke checks validated a Gemini desk proposal, Gemini Live session setup, and a two-second Hunyuan performance retargeted into 19 editable tracks. A full live spoken conversation still requires manual microphone acceptance. Existing phone recording and guide export remain independent editor workflows.

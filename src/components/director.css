@@ -1,0 +1,54 @@
+.assistant-panel.director-panel { display: flex; flex-direction: column; overflow: hidden; padding: 60px 18px 12px; gap: 0; width: 360px; flex-basis: 360px; }
+.director-panel .panel-heading { margin-bottom: 17px; }
+.director-panel .panel-heading { flex: 0 0 auto; }
+.director-panel .eyebrow { display: flex; align-items: center; gap: 5px; }
+.director-heading-actions { display: flex; gap: 2px; }
+.director-context { display: flex; align-items: center; gap: 4px; padding: 0 0 14px; border-bottom: 1px solid #e9e7e2; }
+.director-context button { border: 0; background: #f5f3ef; padding: 8px 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #696254; }
+.director-context button.is-picking { background: #eee0ce; color: #79501f; }
+.director-messages { flex: 1; min-height: 80px; overflow-y: auto; overscroll-behavior: contain; padding: 18px 2px; }
+.director-welcome { padding: 20px 3px 10px; }
+.director-welcome-icon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 14px; background: #f1eee8; color: #7d6441; }
+.director-welcome h3 { font-size: 19px; margin: 19px 0 8px; letter-spacing: -.5px; }
+.director-welcome p { color: #77736b; line-height: 1.7; font-size: 12px; }
+.director-examples { display: grid; gap: 8px; margin-top: 22px; }
+.director-examples button { display: flex; align-items: center; justify-content: space-between; padding: 11px 12px; border: 1px solid #e8e5df; border-radius: 9px; background: white; text-align: left; font-size: 11px; color: #635e55; }
+.director-message { margin: 0 0 18px; max-width: 100%; }
+.director-message > span { font-size: 10px; font-weight: 700; color: #969088; }
+.director-message p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 5px 0 0; font-size: 12px; line-height: 1.7; color: #49453d; }
+.director-message.user { margin-left: 22px; padding: 10px 13px; background: #f3f1ed; border-radius: 12px 12px 2px 12px; }
+.director-thinking { display: flex; align-items: center; gap: 7px; color: #847965; font-size: 11px; }
+.director-proposal { flex: 0 0 auto; max-height: 35%; overflow: auto; padding: 13px; margin: 0 0 12px; border: 1px solid #ddd2bf; border-radius: 11px; background: #fbf8f2; }
+.director-proposal-title, .director-proposal-title > span { display: flex; align-items: center; gap: 6px; }
+.director-proposal-title { justify-content: space-between; font-size: 10px; font-weight: 700; color: #746247; }
+.director-proposal-title small { white-space: nowrap; font-weight: 400; }
+.director-proposal > p { margin: 9px 0 12px; font-size: 12px; line-height: 1.65; }
+.director-proposal > small { display: block; font-size: 10px; line-height: 1.6; color: #847b6c; margin-bottom: 10px; }
+.director-proposal-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.director-proposal-actions .button { padding: 8px 10px; font-size: 10px; min-height: 32px; }
+.director-composer { flex: 0 0 auto; border: 1px solid #dedad2; border-radius: 13px; background: #fff; padding: 10px; }
+.director-composer:focus-within { border-color: #b7a890; box-shadow: 0 0 0 2px #b7a89018; }
+.director-composer textarea { width: 100%; resize: vertical; min-height: 52px; max-height: 150px; border: 0; outline: 0; background: transparent; font: inherit; font-size: 12px; line-height: 1.6; padding: 0; }
+.director-composer textarea::placeholder { color: #a09a90; }
+.director-composer-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.director-mic { border: 0; display: flex; align-items: center; gap: 7px; background: #f5f3ef; color: #726959; padding: 8px 10px; border-radius: 20px; font-size: 10px; }
+.director-mic.is-on { background: #e9eee5; color: #526546; }
+.director-send { border: 0; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #322f29; color: white; }
+.director-panel button:disabled { opacity: .45; cursor: not-allowed; }
+.director-footnote { margin: 9px 0 0; font-size: 9px; line-height: 1.6; color: #a29b91; text-align: center; }
+.director-error { display: flex; gap: 6px; color: #9b4531; background: #fff1eb; border-radius: 8px; padding: 9px; margin-bottom: 10px; }
+.director-error p, .director-config { font-size: 11px; line-height: 1.6; margin: 0; }
+.director-error button, .director-applied button { background: none; border: 0; color: inherit; }
+.director-error button { align-self: start; }
+.director-error .director-retry { margin-top: 6px; text-decoration: underline; font-size: 11px; padding: 0; }
+.director-config { padding: 10px 0; color: #847965; }
+.director-applied { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0 14px; font-size: 11px; color: #617654; }
+.director-applied span, .director-applied button { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+.director-dock { position: fixed; z-index: 45; top: 80px; right: 20px; display: flex; border: 1px solid #dcd8ce; border-radius: 24px; background: #fffefa; box-shadow: 0 5px 22px #30291612; }
+.director-dock button { display: flex; align-items: center; gap: 7px; padding: 11px 13px; border: 0; background: transparent; font-size: 11px; color: #625d52; }
+.director-voice-dot { width: 6px; height: 6px; border-radius: 50%; background: #88a476; }
+.director-voice-dot.connecting, .director-voice-dot.reconnecting { background: #bb9759; }
+.director-placement-hint { position: absolute; z-index: 25; top: 60px; left: 50%; transform: translateX(-50%); padding: 10px 14px; border-radius: 10px; background: #fffdf4; border: 1px solid #ded3bf; box-shadow: 0 3px 18px #433b2510; font-size: 11px; white-space: nowrap; }
+.director-placement-hint button { border: 0; background: transparent; margin-left: 10px; font-size: 10px; text-decoration: underline; color: #8e7750; }
+@media (max-width: 1050px) { .assistant-panel.director-panel { width: 320px; flex-basis: 320px; } }
+@media (max-width: 700px) { .assistant-panel.director-panel { width: 100%; max-height: 65dvh; height: 65dvh; padding: 14px 18px; } .director-welcome { padding-top: 4px; } .director-welcome-icon { display: none; } .director-examples { margin-top: 10px; } .director-dock { top: 70px; right: 10px; } }

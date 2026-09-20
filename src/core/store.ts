@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { type AnimationAsset, type Channel, type Project, type Vec3, type ShotCamera, CAMERA_ID, clipAt, clipSceneTime, clipSourceTime, hasTarget, primaryTarget, makeCamera, HUMANOID_ID, makeObject, validateProject, type SceneObject, type Generation, makeProject, moveKey, parseProject, sample, seedIdle, snapTime, clipTimelineTime, clipTimelineSceneTime, motionTime, motionSceneTime, uid } from './project';
-import { applyProposal, type Proposal } from './proposals';
+import { applyProposal, sceneSignature, type Proposal } from './proposals';
+import { applyDirectorActions, type DirectorExecution } from './director';
 import { simplifyRotationPath } from './rotationPath';
 import { editTransformKey } from './keyEditing';
 import { animationFromClip, animationFromTracks, clipPreview, clipProject, insertClip, replaceClipTracks, splitClip, transformClip } from './clips';
@@ -19,6 +20,7 @@ export interface EditorState {
   status: string; undoCount: number; redoCount: number;
   selectedClip: string | null; editingClip: string | null;
   phoneControl: boolean;
+  directorPlacement: Vec3 | null; directorPicking: boolean;
   timelineMode: 'keys' | 'velocity' | 'value'; selectedVelocityKey: string | null;
 }
 const draft = restore();
@@ -29,6 +31,7 @@ let state: EditorState = {
   mode: 'translate', space: 'world', showRig: false, showGrid: true, selectionActive: false, camera: 'orbit', frameRequest: 0,
   status: 'Ready. Start with a pose, or load the demo idle.', undoCount: 0, redoCount: 0,
   selectedClip: null, editingClip: null, phoneControl: false,
+  directorPlacement: null, directorPicking: false,
   timelineMode: 'keys', selectedVelocityKey: null,
 };
 const listeners = new Set<() => void>();
@@ -116,6 +119,16 @@ export const studio = {
   get: () => state,
   subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; },
   patch: emit,
+  directorBusy: () => !!transaction || state.exporting || state.phoneControl || state.camera === 'ar',
+  applyDirector: (execution: DirectorExecution) => {
+    if (execution.status !== 'ready' || execution.proposal.status !== 'approved') throw new Error('Approve the current proposal before applying it.');
+    if (studio.directorBusy()) throw new Error('Finish the current drag, capture or phone control before applying.');
+    if (execution.proposal.baseSignature !== sceneSignature(state.project)) throw new Error('The scene changed. Refresh the director proposal before applying.');
+    const project = applyDirectorActions(state.project, execution.proposal.actions, execution.animations);
+    commit(project, 'Director changes applied. Undo is available.');
+    const created = execution.proposal.actions.find(a => a.kind === 'create_object');
+    if (created?.kind === 'create_object') studio.selectObject(created.objectId);
+  },
   persistNow: () => { hasDraft = true; return flushPersistence(); },
   getDraft: () => hasDraft ? state.project : undefined,
   forgetProject: (id: string) => {
@@ -130,7 +143,7 @@ export const studio = {
     past.length = 0; future.length = 0; transaction = null; hasDraft = true;
     emit({ project, preview: null, playing: false, time: 0, objectId: primaryTarget(project), selected: 'model',
       channel: 'position', mode: 'translate', space: 'world', selectedKey: null, selectedClip: null, editingClip: null,
-      selectionActive: false, camera: 'orbit', undoCount: 0, redoCount: 0, status: 'Project opened.' });
+      selectionActive: false, camera: 'orbit', undoCount: 0, redoCount: 0, directorPlacement: null, directorPicking: false, status: 'Project opened.' });
     emit({ timelineMode: 'keys', selectedVelocityKey: null });
     flushPersistence();
   },

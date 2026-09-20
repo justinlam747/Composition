@@ -11,6 +11,7 @@ import { studio, useStudio } from './core/store';
 import Viewport from './scene/Viewport';
 import TimelinePanel from './components/TimelinePanel';
 import Inspector from './components/Inspector';
+import DirectorPanel from './components/DirectorPanel';
 
 type Panel = 'scene' | 'animate';
 function saveFile(name: string, content: string) {
@@ -23,7 +24,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
   const s = useStudio();
   const [panel, setPanel] = useState<Panel>('scene');
   useEffect(() => { if (s.project.clips?.length) setPanel('animate'); }, [s.project.clips?.length]);
-  const [sidePanel, setSidePanel] = useState<'ai' | 'animations' | 'objects' | 'projects' | null>(null);
+  const [sidePanel, setSidePanel] = useState<'ai' | 'animations' | 'objects' | 'projects' | 'director' | null>(null);
   const [saving, setSaving] = useState(false);
   const [naming, setNaming] = useState(false);
   async function save(goHome = false) {
@@ -118,7 +119,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
       </nav>
       <div className="header-actions">
         <button className={`icon-button ${sidePanel === 'animations' ? 'is-on' : ''}`} aria-label="Animations" title="Animation library" aria-expanded={sidePanel === 'animations'} aria-controls="animations-panel" onClick={() => { toggleSide('animations'); setPanel('animate'); }}><FolderOpen size={19} /></button>
-        <button className="icon-button" aria-label="Add model" title="Add a model with voice" onClick={() => toggleSide('objects')}><Mic size={18} /></button>
+        <button className={`icon-button ${sidePanel === 'director' ? 'is-on' : ''}`} aria-label="Director" title="Talk to Director" aria-expanded={sidePanel === 'director'} onClick={() => toggleSide('director')}><Mic size={18} /></button>
         <div className="menu-wrap" ref={menuRef}>
           <button ref={menuButton} className={`icon-button ${menu ? 'is-on' : ''}`} aria-label="Scene menu" aria-expanded={menu} aria-controls="scene-menu" onClick={() => setMenu(!menu)}><MoreHorizontal size={22} /></button>
           {menu && <div id="scene-menu" className="scene-menu">
@@ -166,6 +167,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
     {sidePanel === 'ai' && <AIPanel onClose={() => setSidePanel(null)} />}
     {sidePanel === 'animations' && <AnimationsPanel onClose={() => setSidePanel(null)} />}
     {sidePanel === 'objects' && <ObjectsPanel onClose={() => setSidePanel(null)} />}
+    <DirectorPanel open={sidePanel === 'director'} active={active} onOpen={() => toggleSide('director')} onClose={() => setSidePanel(null)} />
     {sidePanel === 'projects' && <ProjectsPanel onClose={() => setSidePanel(null)} onOpen={async id => {
       setSaving(true); studio.patch({ playing: false });
       try { await openSavedProject(id); setSidePanel(null); }
