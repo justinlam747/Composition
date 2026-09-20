@@ -615,12 +615,13 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
 .output-title { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .output-title h1 { font-size: 24px; font-weight: 650; letter-spacing: -.7px; margin: 0 0 5px; }
 .output-title p { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
-.output-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; list-style: none; padding: 0; margin: 24px 0; }
+.output-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; list-style: none; padding: 0; margin: 32px 0 36px; }
 .output-steps li { min-width: 0; }
-.output-steps button { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; padding: 8px 12px; min-height: 40px; font-size: 11px; color: var(--muted); }
+.output-steps button { display: flex; align-items: center; justify-content: center; gap: 11px; width: 100%; padding: 10px 12px; min-height: 48px; font-size: 13px; line-height: 1; color: var(--muted); }
 .output-steps button[aria-current=step] { color: var(--text); font-weight: 700; }
 .output-steps button:disabled { opacity: .65; }
-.step-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.step-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; }
+.step-icon svg { width: 18px; height: 18px; }
 .output-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 28px; align-items: start; }
 .output-preview { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
 .output-preview-heading { display: flex; justify-content: space-between; gap: 12px; padding: 8px 8px 18px; font-size: 11px; font-weight: 650; }
@@ -702,8 +703,10 @@ summary { font-size: 11px; color: var(--muted); cursor: pointer; padding: 6px 0;
   .output-divider, .output-header-label { display: none; }
   .output-main { padding: 20px 16px 32px; }
   .output-title h1 { font-size: 20px; }.output-services { gap: 12px; }.output-services small { display: none; }
-  .output-steps { margin: 20px 0; }
-  .output-steps button { gap: 7px; padding: 8px 4px; font-size: 10px; line-height: 1.5; }
+  .output-steps { margin: 24px 0 28px; }
+  .output-steps button { gap: 8px; padding: 8px 4px; min-height: 42px; font-size: 11px; }
+  .step-icon { width: 18px; height: 18px; }
+  .step-icon svg { width: 16px; height: 16px; }
   .output-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .output-preview-empty { padding: 20px 14px; gap: 10px; }
   .output-preview-icon { width: 42px; height: 42px; }
