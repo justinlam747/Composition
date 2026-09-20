@@ -8,8 +8,7 @@
 .director-context button.is-picking { background: #eee0ce; color: #79501f; }
 .director-messages { flex: 1; min-height: 80px; overflow-y: auto; overscroll-behavior: contain; padding: 18px 2px; }
 .director-welcome { padding: 20px 3px 10px; }
-.director-welcome-icon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 14px; background: #f1eee8; color: #7d6441; }
-.director-welcome h3 { font-size: 19px; margin: 19px 0 8px; letter-spacing: -.5px; }
+.director-welcome h3 { font-size: 19px; margin: 0 0 8px; letter-spacing: -.5px; }
 .director-welcome p { color: #77736b; line-height: 1.7; font-size: 12px; }
 .director-examples { display: grid; gap: 8px; margin-top: 22px; }
 .director-examples button { display: flex; align-items: center; justify-content: space-between; padding: 11px 12px; border: 1px solid #e8e5df; border-radius: 9px; background: white; text-align: left; font-size: 11px; color: #635e55; }
@@ -26,8 +25,7 @@
 .director-proposal > small { display: block; font-size: 10px; line-height: 1.6; color: #847b6c; margin-bottom: 10px; }
 .director-proposal-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .director-proposal-actions .button { padding: 8px 10px; font-size: 10px; min-height: 32px; }
-.director-composer { flex: 0 0 auto; border: 1px solid #dedad2; border-radius: 13px; background: #fff; padding: 10px; }
-.director-composer:focus-within { border-color: #b7a890; box-shadow: 0 0 0 2px #b7a89018; }
+.director-composer { flex: 0 0 auto; background: #fff; padding: 10px; }
 .director-composer textarea { width: 100%; resize: vertical; min-height: 52px; max-height: 150px; border: 0; outline: 0; background: transparent; font: inherit; font-size: 12px; line-height: 1.6; padding: 0; }
 .director-composer textarea::placeholder { color: #a09a90; }
 .director-composer-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
@@ -35,7 +33,6 @@
 .director-mic.is-on { background: #e9eee5; color: #526546; }
 .director-send { border: 0; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #322f29; color: white; }
 .director-panel button:disabled { opacity: .45; cursor: not-allowed; }
-.director-footnote { margin: 9px 0 0; font-size: 9px; line-height: 1.6; color: #a29b91; text-align: center; }
 .director-error { display: flex; gap: 6px; color: #9b4531; background: #fff1eb; border-radius: 8px; padding: 9px; margin-bottom: 10px; }
 .director-error p, .director-config { font-size: 11px; line-height: 1.6; margin: 0; }
 .director-error button, .director-applied button { background: none; border: 0; color: inherit; }
@@ -51,4 +48,4 @@
 .director-placement-hint { position: absolute; z-index: 25; top: 60px; left: 50%; transform: translateX(-50%); padding: 10px 14px; border-radius: 10px; background: #fffdf4; border: 1px solid #ded3bf; box-shadow: 0 3px 18px #433b2510; font-size: 11px; white-space: nowrap; }
 .director-placement-hint button { border: 0; background: transparent; margin-left: 10px; font-size: 10px; text-decoration: underline; color: #8e7750; }
 @media (max-width: 1050px) { .assistant-panel.director-panel { width: 320px; flex-basis: 320px; } }
-@media (max-width: 700px) { .assistant-panel.director-panel { width: 100%; max-height: 65dvh; height: 65dvh; padding: 14px 18px; } .director-welcome { padding-top: 4px; } .director-welcome-icon { display: none; } .director-examples { margin-top: 10px; } .director-dock { top: 70px; right: 10px; } }
+@media (max-width: 700px) { .assistant-panel.director-panel { width: 100%; max-height: 65dvh; height: 65dvh; padding: 14px 18px; } .director-welcome { padding-top: 4px; } .director-examples { margin-top: 10px; } .director-dock { top: 70px; right: 10px; } }
