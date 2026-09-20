@@ -173,15 +173,19 @@ test('delayed recovery cannot replace or apply over a newer approved request', a
 });
 
 test.describe('director voice', () => {
-  test('cached demo voice speaks the exact response and suppresses Gemini paraphrases', async ({ page }) => {
+  test('cached demo voice uses ElevenLabs speech and suppresses Gemini paraphrases', async ({ page }) => {
     await page.addInitScript(() => {
-      (window as unknown as { demoSpeech: string[] }).demoSpeech = [];
-      Object.defineProperty(window.speechSynthesis, 'speak', { configurable: true, value: (utterance: SpeechSynthesisUtterance) => {
-        (window as unknown as { demoSpeech: string[] }).demoSpeech.push(utterance.text); utterance.onstart?.(new Event('start') as SpeechSynthesisEvent); utterance.onend?.(new Event('end') as SpeechSynthesisEvent);
-      } });
-      Object.defineProperty(window.speechSynthesis, 'cancel', { configurable: true, value: () => {} });
+      class TestAudio {
+        onended: (() => void) | null = null; onerror: (() => void) | null = null;
+        constructor(_src: string) {}
+        play() { queueMicrotask(() => this.onended?.()); return Promise.resolve(); }
+        pause() {}
+      }
+      Object.defineProperty(window, 'Audio', { configurable: true, value: TestAudio });
     });
-    await page.route('**/api/capabilities', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), directorVoice: true } }); });
+    await page.route('**/api/capabilities', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), directorVoice: true, elevenLabsTts: true } }); });
+    const spoken: string[] = [];
+    await page.route('**/api/director/speech', async route => { spoken.push(route.request().postDataJSON().text); await route.fulfill({ contentType: 'audio/mpeg', body: 'speech' }); });
     let socket!: WebSocketRoute; const replies: { type: string; id?: string; result?: string }[] = [];
     await page.routeWebSocket('**/api/director/live', ws => { socket = ws; ws.onMessage(raw => {
       if (typeof raw !== 'string') return; const data = JSON.parse(raw); replies.push(data);
@@ -196,12 +200,12 @@ test.describe('director voice', () => {
     socket.send(JSON.stringify({ type: 'tool', id: 'demo-plan', name: 'director_request', args: { request: 'Create a classroom with a long table, projector screen, four chairs and humanoids' }, utterance: 'Create a classroom with a long table, projector screen, four chairs and humanoids', turn: 1 }));
     await expect.poll(() => replies.find(reply => reply.id === 'demo-plan')).toBeTruthy();
     const pending = JSON.parse(replies.find(reply => reply.id === 'demo-plan')!.result!).proposal;
-    await expect.poll(() => page.evaluate(() => (window as unknown as { demoSpeech: string[] }).demoSpeech)).toEqual(['I’ll stage a classroom with a long table, a projector screen, four evenly spaced chairs with seated humanoids, and one presenter standing in front. Review the preview, then apply it.']);
+    await expect.poll(() => spoken[0]).toBe('I’ll stage a classroom with a long table, a projector screen, four evenly spaced chairs with seated humanoids, and one presenter standing in front. Review the preview, then apply it.');
     socket.send(JSON.stringify({ type: 'input-start', turn: 2 }));
     socket.send(JSON.stringify({ type: 'tool', id: 'demo-approval', name: 'director_decision', args: { decision: 'approve', proposalId: pending.id, revision: pending.revision }, utterance: 'Yes', turn: 2 }));
     await expect.poll(() => replies.find(reply => reply.id === 'demo-approval')).toBeTruthy();
     await expect.poll(async () => (await scene(page)).objects.length).toBe(11);
-    await expect.poll(() => page.evaluate(() => (window as unknown as { demoSpeech: string[] }).demoSpeech.at(-1))).toBe('Applied. You can adjust the result in the scene or use Undo.');
+    await expect.poll(() => spoken.at(-1)).toBe('Applied. You can adjust the result in the scene or use Undo.');
     socket.send(JSON.stringify({ type: 'transcript', role: 'assistant', text: 'Here is my improvised version.', turn: 1 }));
     await page.waitForTimeout(50);
     await expect(page.getByRole('log')).not.toContainText('improvised version');

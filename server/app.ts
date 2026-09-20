@@ -14,6 +14,7 @@ import type { ImageJob, SavedObject } from '../src/core/api';
 import type { PhoneRelay } from './phoneRelay';
 import { promptTargetSchema } from '../src/core/outputPrompts';
 import { Director } from './director';
+import { elevenLabsSpeechConfigured, synthesizeDirectorSpeech } from './elevenLabs';
 
 export async function createApp(options: { dataDir?: string; providers?: (store: FileStore) => Providers; phone?: PhoneRelay } = {}) {
   const store = new FileStore(path.resolve(options.dataDir ?? process.env.DATA_DIR ?? 'data/studio')); await store.init();
@@ -29,7 +30,10 @@ export async function createApp(options: { dataDir?: string; providers?: (store:
     if (origin && !allowed.has(origin)) return next(new AppError(403, 'ORIGIN_REJECTED', 'This origin is not allowed to access the local studio server.'));
     next();
   });
-  app.get('/api/capabilities', (_req, res) => res.json({ ...providers.configured, director: providers.configured.gemini, directorVoice: Boolean(process.env.GEMINI_API_KEY), videoExport: videoExportAvailable }));
+  app.get('/api/capabilities', (_req, res) => {
+    const elevenLabsTts = elevenLabsSpeechConfigured();
+    res.json({ ...providers.configured, director: providers.configured.gemini, elevenLabsTts, directorVoice: Boolean(process.env.GEMINI_API_KEY) && elevenLabsTts, videoExport: videoExportAvailable });
+  });
   app.get('/api/phone', (_req, res) => res.json({ enabled: !!options.phone }));
   options.phone?.routes(app);
   app.post('/api/assets', express.raw({ type: ['image/*', 'video/*'], limit: '50mb' }), async (req, res) => {
@@ -49,6 +53,11 @@ export async function createApp(options: { dataDir?: string; providers?: (store:
   app.get('/api/assets/:id/first-frame', async (req, res) => res.json(await firstFrame(store, req.params.id)));
   app.get('/api/assets/:id/last-frame', async (req, res) => res.json(await lastFrame(store, req.params.id)));
   app.use(express.json({ limit: '8mb' }));
+  app.post('/api/director/speech', async (req, res) => {
+    const text = z.object({ text: z.string().trim().min(1).max(3000) }).strict().parse(req.body).text;
+    const audio = await synthesizeDirectorSpeech(text);
+    res.setHeader('Content-Type', 'audio/mpeg'); res.setHeader('Content-Length', audio.length); res.send(audio);
+  });
   app.post('/api/output-prompts', async (req, res) => {
     const input = z.object({ project: z.unknown(), target: promptTargetSchema, prompt: z.string().trim().min(1).max(4000), previous: z.string().max(4000).optional() }).strict().parse(req.body);
     res.json(await providers.refinePrompt(parseProject(JSON.stringify(input.project)), input.target, input.prompt, input.previous));
