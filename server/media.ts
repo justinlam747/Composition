@@ -64,11 +64,11 @@ export async function saveGuide(store: FileStore, bytes: Buffer, duration: numbe
     throw new AppError(400, 'INVALID_VIDEO', 'The guide could not be decoded. Export it again in Chrome or Edge.');
   } finally { await Promise.allSettled([unlink(input), unlink(output)]); }
 }
-export async function downloadOutput(url: string): Promise<Buffer> {
+export async function downloadOutput(url: string, geminiKey?: string): Promise<Buffer> {
   for (let redirects = 0; redirects < 5; redirects++) {
     const parsed = new URL(url);
-    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port || !['fal.media', 'fal.ai', 'storage.googleapis.com'].some(host => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`))) throw new AppError(502, 'INVALID_OUTPUT_URL', 'The provider returned an unsupported output location.');
-    const response = await fetch(url, { signal: AbortSignal.timeout(120_000), redirect: 'manual' });
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port || !(geminiKey && parsed.hostname === 'generativelanguage.googleapis.com') && !['fal.media', 'fal.ai', 'storage.googleapis.com'].some(host => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`))) throw new AppError(502, 'INVALID_OUTPUT_URL', 'The provider returned an unsupported output location.');
+    const response = await fetch(url, { signal: AbortSignal.timeout(120_000), redirect: 'manual', ...(geminiKey && parsed.hostname === 'generativelanguage.googleapis.com' ? { headers: { 'x-goog-api-key': geminiKey } } : {}) });
     if (response.status >= 300 && response.status < 400 && response.headers.get('location')) { url = new URL(response.headers.get('location')!, url).href; continue; }
     if (!response.ok || !response.body) throw new AppError(502, 'OUTPUT_DOWNLOAD', 'Could not download the generated video. Check job status again to retry.');
     const reader = response.body.getReader(), chunks: Buffer[] = []; let size = 0;

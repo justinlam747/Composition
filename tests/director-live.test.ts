@@ -21,11 +21,13 @@ describe('director voice relay', () => {
     await vi.waitFor(() => expect(incoming.some(message => message.type === 'ready')).toBe(true));
     return { client, incoming, remoteMessages, remote: () => remote };
   }
-  it('forwards PCM and every audio/transcript part, then interrupts playback', async () => {
+  it('forwards PCM and transcripts but keeps native Gemini audio out of browser playback', async () => {
     const relay = await setup(); relay.client.send(Buffer.from([0, 0, 1, 0]));
     await vi.waitFor(() => expect(relay.remoteMessages.some(message => message.realtimeInput?.audio?.data === 'AAABAA==')).toBe(true));
-    relay.remote().send(JSON.stringify({ serverContent: { inputTranscription: { text: 'Hello' }, outputTranscription: { text: 'Hi there' }, modelTurn: { parts: [{ inlineData: { mimeType: 'audio/pcm;rate=24000', data: 'AAA=' } }, { inlineData: { mimeType: 'audio/pcm;rate=24000', data: 'AQA=' } }] } } }));
-    await vi.waitFor(() => expect(relay.incoming.filter(message => message.type === 'audio')).toHaveLength(2));
+    relay.remote().send(JSON.stringify({ serverContent: { inputTranscription: { text: 'Hello' }, outputTranscription: { text: 'Hi there' }, modelTurn: { parts: [{ inlineData: { mimeType: 'audio/pcm;rate=24000', data: 'AAA=' } }, { inlineData: { mimeType: 'audio/pcm;rate=24000', data: 'AQA=' } }] }, turnComplete: true } }));
+    await vi.waitFor(() => expect(relay.incoming.some(message => message.type === 'turn-complete')).toBe(true));
+    expect(relay.incoming.filter(message => message.type === 'audio')).toHaveLength(0);
+    expect(relay.incoming.find(message => message.type === 'turn-complete')).toMatchObject({ text: 'Hi there', turn: 0 });
     expect(relay.incoming.some(message => message.type === 'transcript' && message.text === 'Hello')).toBe(true);
     relay.remote().send(JSON.stringify({ serverContent: { interrupted: true } }));
     await vi.waitFor(() => expect(relay.incoming.some(message => message.type === 'interrupted')).toBe(true));
@@ -58,5 +60,9 @@ describe('director voice relay', () => {
     const setup = directorLiveSetup('{}'); expect(setup.setup.generationConfig.responseModalities).toEqual(['AUDIO']);
     expect(setup.setup.tools[0].functionDeclarations.map(tool => tool.name)).toEqual(['director_request', 'director_decision', 'director_status']);
     expect(JSON.stringify(setup)).not.toContain('apiKey');
+    const demoInstruction = JSON.stringify(directorLiveSetup('{}', undefined, true));
+    expect(demoInstruction).toContain('director_request for every scene-edit request');
+    expect(demoInstruction).toContain('director_decision for approvals or cancellations');
+    expect(JSON.stringify(directorLiveSetup('{}'))).toContain('ask exactly one concise question');
   });
 });

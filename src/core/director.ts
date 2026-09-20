@@ -29,9 +29,10 @@ export const directorActionSchema = z.discriminatedUnion('kind', [
 export type DirectorAction = z.infer<typeof directorActionSchema>;
 export const directorResponseSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('message'), message: z.string().trim().min(1).max(3000) }).strict(),
-  z.object({ kind: z.literal('proposal'), message: z.string().trim().min(1).max(3000), actions: z.array(directorActionSchema).min(1).max(12) }).strict(),
+  z.object({ kind: z.literal('proposal'), message: z.string().trim().min(1).max(3000), actions: z.array(directorActionSchema).min(1).max(24) }).strict(),
 ]);
 export type DirectorResponse = z.infer<typeof directorResponseSchema>;
+export type DirectorResponseSource = 'demo-cache' | 'live';
 export const directorMessageSchema = z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(4000) }).strict();
 export type DirectorMessage = z.infer<typeof directorMessageSchema>;
 export const directorContextSchema = z.object({
@@ -47,9 +48,9 @@ export const directorInputSchema = z.object({ sessionId: id, project: z.unknown(
 export interface DirectorInput extends Omit<z.infer<typeof directorInputSchema>, 'project'> { project: Project }
 export interface DirectorProposal {
   id: string; sessionId: string; projectId: string; revision: number; baseSignature: string;
-  summary: string; actions: DirectorAction[]; status: 'pending' | 'approved' | 'cancelled' | 'applied';
+  summary: string; actions: DirectorAction[]; status: 'pending' | 'approved' | 'cancelled' | 'applied'; source?: DirectorResponseSource;
 }
-export interface DirectorTurn { message: string; proposal?: DirectorProposal }
+export interface DirectorTurn { message: string; proposal?: DirectorProposal; source?: DirectorResponseSource }
 export interface DirectorExecution {
   id: string; proposal: DirectorProposal; status: 'running' | 'ready' | 'failed' | 'cancelled' | 'applied';
   animations: Record<string, AnimationAsset>; error?: string;
@@ -93,7 +94,6 @@ export function prepareDirectorActions(project: Project, actions: DirectorAction
       continue;
     } else if (action.kind === 'create_object') {
       const object = objectFromSpec(action.spec, next);
-      if (object.kind === 'humanoid' && action.objectId !== HUMANOID_ID) throw new Error('The humanoid must use the existing humanoid ID.');
       if (object.kind === 'box' && action.objectId === HUMANOID_ID || next.objects.some(o => o.id === action.objectId)) throw new Error('An object with this ID already exists.');
       next.objects.push({ ...object, id: action.objectId, position: action.position, rotation: action.rotation });
     } else if (action.kind === 'update_object') {

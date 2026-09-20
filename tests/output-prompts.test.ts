@@ -25,7 +25,7 @@ describe('Gemini output prompt refinement', () => {
     const asset = await context.store.asset(uploaded, 'image/png', 'reference');
     project.generation!.imageAssetIds = [asset.id]; project.generation!.uploadedImageAssetIds = [asset.id];
     const result = await mockProviders(context.store).refinePrompt(project, 'video', 'toy hero');
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ thought: true, text: 'ignore this' }, { text: JSON.stringify(result) }] } }] }));
+    const fetchMock = vi.fn().mockImplementation(async () => Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ thought: true, text: 'ignore this' }, { text: JSON.stringify(result) }] } }] }));
     vi.stubGlobal('fetch', fetchMock);
     expect(await refineOutputPrompt(context.store, project, 'video', 'toy hero', 'previous draft')).toEqual(result);
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
@@ -35,6 +35,11 @@ describe('Gemini output prompt refinement', () => {
     expect(body.contents[0].parts[1].inlineData.data).toBe(referencePng.toString('base64'));
     expect(body.contents[0].parts[3].inlineData.data).toBe(uploaded.toString('base64'));
     expect(project.generation!.instructions).toBeUndefined();
+    project.generation!.videoModel = 'veo';
+    await refineOutputPrompt(context.store, project, 'video', 'toy hero');
+    const veoInstruction = JSON.parse(fetchMock.mock.calls[1][1].body).systemInstruction.parts[0].text;
+    expect(veoInstruction).toContain('Veo, which receives no motion guide');
+    expect(veoInstruction).not.toContain('motion following the guide');
   });
   it('rejects malformed or blocked responses and stale guides without overwriting the user prompt', async () => {
     const project = await prepared(); project.generation!.instructions = 'Original';

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { BONES, type Vec3 } from '../core/project';
 import { createJointAdapter } from './rigAdapter';
 import { createSelectionHighlighter } from './selectionHighlight';
@@ -13,9 +14,21 @@ const SOURCE_BONES: Record<string, string> = {
   'thigh.R': 'DEF-thigh.R', 'shin.R': 'DEF-shin.R', 'foot.R': 'DEF-foot.R',
 };
 
+let sourceAsset: Promise<THREE.Group> | undefined;
+async function loadSourceAsset() {
+  try { return await (sourceAsset ??= new GLTFLoader().loadAsync('/models/humanoid.glb').then(gltf => gltf.scene)); }
+  catch (error) { sourceAsset = undefined; throw error; }
+}
 export async function createMannequin() {
-  const gltf = await new GLTFLoader().loadAsync('/models/humanoid.glb');
-  return buildMannequin(gltf.scene);
+  const asset = clone(await loadSourceAsset()) as THREE.Group;
+  // SkeletonUtils creates independent bones, while geometry/material clones keep
+  // per-character selection and appearance attributes isolated.
+  asset.traverse(object => {
+    if (!(object instanceof THREE.SkinnedMesh)) return;
+    object.geometry = object.geometry.clone();
+    object.material = Array.isArray(object.material) ? object.material.map(material => material.clone()) : object.material.clone();
+  });
+  return buildMannequin(asset);
 }
 
 // Keep the original skinned geometry and full skeleton. The editor maps only its

@@ -8,7 +8,7 @@ export interface Job { id: string; projectId: string; status: 'preparing' | 'que
 export interface SavedObject { id: string; object: ObjectSpec; createdAt: string }
 export interface ImageJob extends ImageRequest { projectId: string; status: 'running' | 'completed' | 'failed'; createdAt: string; assetId?: string; assetIds?: string[]; imagePairs?: Record<string, string>; error?: string }
 export interface MotionJob { id: string; projectId: string; status: 'running' | 'completed' | 'failed'; createdAt: string; prompt: string; duration: number; model: 'fal-ai/hunyuan-motion'; baseSignature: string; animation?: AnimationAsset; error?: string }
-export interface Capabilities { gemini: boolean; fal: boolean; hunyuanMotion: boolean; director: boolean; directorVoice: boolean; videoExport: boolean }
+export interface Capabilities { gemini: boolean; fal: boolean; hunyuanMotion: boolean; director: boolean; elevenLabsTts: boolean; directorVoice: boolean; videoExport: boolean }
 export interface ProjectSummary { id: string; name: string; updatedAt: string; duration: number; objectCount: number; hasMotion: boolean; preview?: ProjectPreview }
 export const assetUrl = (id: string, download = false) => `/api/assets/${encodeURIComponent(id)}/file${download ? '?download=1' : ''}`;
 export class ApiError extends Error { constructor(public status: number, public code: string, message: string) { super(message); } }
@@ -18,12 +18,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) throw new ApiError(response.status, body?.error?.code ?? 'REQUEST_FAILED', body?.error?.message ?? `Request failed (${response.status}). Check the server connection.`);
   return body as T;
 }
+async function requestAudio(path: string, init: RequestInit = {}): Promise<Blob> {
+  const response = await fetch(`/api${path}`, { ...init, signal: init.signal ?? AbortSignal.timeout(90_000) });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(response.status, body?.error?.code ?? 'REQUEST_FAILED', body?.error?.message ?? 'Speech could not be generated. Check the server connection.');
+  }
+  if (!response.headers.get('content-type')?.startsWith('audio/')) throw new ApiError(502, 'INVALID_AUDIO', 'The server returned an invalid speech response.');
+  return response.blob();
+}
 const json = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const api = {
   capabilities: () => request<Capabilities>('/capabilities'),
   directorTurn: (input: DirectorInput, signal?: AbortSignal) => request<DirectorTurn>('/director/turns', { ...json(input), signal }),
   directorDecision: (proposal: DirectorProposal, decision: DirectorDecision, project: Project) => request<DirectorExecution>(`/director/proposals/${proposal.id}/decision`, json({ sessionId: proposal.sessionId, revision: proposal.revision, decision, project })),
   directorExecution: (id: string) => request<DirectorExecution>(`/director/executions/${id}`),
+  directorSpeech: (text: string, signal?: AbortSignal) => requestAudio('/director/speech', { ...json({ text }), signal }),
   upload: (blob: Blob, role: 'reference' | 'guide', duration?: number) => request<Asset>(`/assets?role=${role}${duration ? `&duration=${duration}` : ''}`, { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob }),
   saveProject: (project: Project) => request<Project>(`/projects/${project.id}`, { ...json(project), method: 'PUT' }),
   projects: () => request<ProjectSummary[]>('/projects'),

@@ -6,6 +6,7 @@ import { AppError, type FileStore } from './storage';
 import type { Providers } from './providers';
 import type { MotionJobs } from './motionJobs';
 import type { MotionJob } from '../src/core/api';
+import { demoDirectorResponse } from '../src/core/demoDirector';
 
 interface ExecutionRecord extends DirectorExecution { project: Project; motionJobIds: Record<string, string> }
 export const directorDecisionSchema = z.object({ sessionId: z.string().max(80), revision: z.number().int().positive(), decision: z.enum(['approve', 'cancel', 'applied', 'refresh']), project: z.unknown() }).strict();
@@ -23,21 +24,23 @@ export class Director {
   }
   async turn(raw: unknown): Promise<DirectorTurn> {
     const parsed = directorInputSchema.parse(raw), input: DirectorInput = { ...parsed, project: parseProject(JSON.stringify(parsed.project)) };
-    if (!this.providers.configured.gemini) throw new AppError(503, 'GEMINI_NOT_CONFIGURED', 'Configure GEMINI_API_KEY on the server to use Director.');
     return this.exclusive(input.sessionId, async () => {
       const active = input.executionId ? await this.get(input.executionId) : undefined;
       if (active && (active.proposal.projectId !== input.project.id || active.proposal.sessionId !== input.sessionId)) throw new AppError(409, 'DIRECTOR_SESSION_CHANGED', 'This execution belongs to another conversation.');
-      const result = directorResponseSchema.parse(await this.providers.director(input));
-      if (result.kind === 'message') return { message: result.message };
+      const cached = demoDirectorResponse(input);
+      const source = cached ? 'demo-cache' as const : 'live' as const;
+      if (!cached && !this.providers.configured.gemini) throw new AppError(503, 'GEMINI_NOT_CONFIGURED', 'Configure GEMINI_API_KEY on the server to use Director for this request. Cached demo commands remain available.');
+      const result = directorResponseSchema.parse(cached ?? await this.providers.director(input));
+      if (result.kind === 'message') return { message: result.message, source };
       if (active?.status === 'running') return { message: 'I am still preparing your approved request. You can keep editing and talking with me. Cancel that request before starting another scene change.' };
       try { applyDirectorActions(input.project, result.actions, {}, true); }
       catch (error) { return { message: `I need to adjust that plan before applying it. ${(error as Error).message}` }; }
       // These are server asset IDs, not model-provided URLs or arbitrary files.
       for (const action of result.actions) if (action.kind === 'create_object') await Promise.all(action.spec.referenceAssetIds.map(id => this.store.requireAsset(id, 'reference')));
       for (const prior of await this.store.list<DirectorProposal>('director-proposals')) if (prior.sessionId === input.sessionId && prior.status === 'pending') await this.store.put('director-proposals', prior.id, { ...prior, status: 'cancelled' });
-      const proposal: DirectorProposal = { id: uid(), sessionId: input.sessionId, projectId: input.project.id, revision: 1, baseSignature: sceneSignature(input.project), summary: result.message, actions: result.actions, status: 'pending' };
+      const proposal: DirectorProposal = { id: uid(), sessionId: input.sessionId, projectId: input.project.id, revision: 1, baseSignature: sceneSignature(input.project), summary: result.message, actions: result.actions, status: 'pending', source };
       await this.store.put('director-proposals', proposal.id, proposal);
-      return { message: result.message, proposal };
+      return { message: result.message, proposal, source };
     });
   }
   async get(id: string): Promise<DirectorExecution> {

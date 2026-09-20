@@ -87,6 +87,9 @@ describe('director backend', () => {
     const context = await createApp({ dataDir: directory, providers: store => { const provider = mockProviders(store); provider.configured.gemini = false; return provider; } });
     expect((await request(context.app).get('/api/capabilities')).body.director).toBe(false);
     expect((await request(context.app).post('/api/director/turns').send(input()).expect(503)).body.error.code).toBe('GEMINI_NOT_CONFIGURED');
+    const demo = input({ ...makeProject(), demo: true }); demo.text = 'Build a classroom with a long table, projector screen, four chairs and humanoids';
+    const cached = await request(context.app).post('/api/director/turns').send(demo).expect(200);
+    expect(cached.body).toMatchObject({ source: 'demo-cache', proposal: { source: 'demo-cache', actions: expect.any(Array) } });
     await request(context.app).post('/api/director/turns').send({ text: 'hello' }).expect(400);
   });
   it('retries a recovered motion reference whose job was never created', async () => {

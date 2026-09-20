@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Bone, Check, Diamond, Download, Eye, Film, FolderOpen, HelpCircle, Mic, MoreHorizontal, Pencil, Redo2, RotateCcw, Save, Shapes, Smartphone, Sparkles, Trash2, Undo2, X } from 'lucide-react';
 import { importProject, openSavedProject, saveCurrentProject } from './core/projectSession';
 import ProjectNameDialog from './components/ProjectNameDialog';
-import { CAMERA_ID, hasCharacter, hasTarget } from './core/project';
+import { CAMERA_ID, hasPrimaryCharacter, hasTarget } from './core/project';
 import AIPanel from './components/AIPanel';
 import AnimationsPanel from './components/AnimationsPanel';
 import ObjectsPanel from './components/ObjectsPanel';
@@ -144,7 +144,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
             <button onClick={() => studio.patch({ showGrid: !s.showGrid })}><Shapes size={16} /> Show grid {s.showGrid && <Check className="menu-check" size={14} />}</button>
             <div className="menu-separator" />
             <button disabled={!s.project.tracks.some(t => t.keys.length) && !s.project.clips?.length} onClick={() => { setMenu(false); setConfirmClear(true); }}><RotateCcw size={16} /> Clear motion</button>
-            <button disabled={!hasCharacter(s.project)} onClick={() => { studio.remove(); setMenu(false); setPanel('scene'); }}><Trash2 size={16} /> Remove character</button>
+            <button disabled={!hasPrimaryCharacter(s.project)} onClick={() => { studio.remove(); setMenu(false); setPanel('scene'); }}><Trash2 size={16} /> Remove character</button>
             <button onClick={() => { setMenu(false); setHelp(true); }}><HelpCircle size={16} /> Help & shortcuts</button>
           </div>}
         </div>
@@ -186,7 +186,7 @@ export default function Editor({ onHome, onOutput, active = true }: { onHome: ()
         <button ref={modalClose} className="modal-close icon-button" aria-label="Close dialog" onClick={() => { setHelp(false); setConfirmClear(false); }}><X size={20} /></button>
         {confirmClear ? <><span className="modal-symbol"><RotateCcw size={23} /></span><h2 id="modal-heading">Clear the motion?</h2><p>All keyframes will be removed and the character will return to its starting pose. You can undo this.</p><div className="dialog-actions"><button className="button secondary" onClick={() => setConfirmClear(false)}>Keep editing</button><button className="button primary" onClick={() => { studio.clear(); setConfirmClear(false); }}>Clear all motion</button></div></> : <>
           <span className="modal-symbol"><Diamond size={23} /></span><h2 id="modal-heading">A few simple moves.</h2>
-          <ol><li>In <strong>Scene</strong>, click a body part to highlight it and open its controls. Click empty space to close them.</li><li>Drag the handles or enter values to pose the character. Edits save a key at the current time.</li><li><strong>Animate</strong> lets you play, scrub and retime those keys.</li><li>Turn on <strong>Demo mode</strong> in the three-dot menu to load a prepared idle. Turning it off keeps your existing keys.</li></ol>
+          <ol><li>In <strong>Scene</strong>, click a body part to highlight it and open its controls. Click empty space to close them.</li><li>Drag the handles or enter values to pose the character. Edits save a key at the current time.</li><li><strong>Animate</strong> lets you play, scrub and retime those keys.</li><li>Turn on <strong>Demo mode</strong> in the three-dot menu for cached Director classroom commands. The toggle does not alter your scene or camera.</li></ol>
           <div className="shortcut-grid"><span><kbd>G</kbd> Move</span><span><kbd>R</kbd> Rotate</span><span><kbd>S</kbd> Scale</span><span><kbd>K</kbd> Add key</span><span><kbd>Space</kbd> Play / pause</span><span><kbd>Ctrl Z</kbd> Undo</span></div>
           <p className="help-disclosure">Use the phone camera control to pair an iPhone and record handheld camera movement. Choose Output to preview your composition, add video direction, and generate with Seedance. Live AI is optional.</p>
         </>}

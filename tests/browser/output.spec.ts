@@ -189,6 +189,29 @@ test('an image request survives a lost response and reload without another provi
   expect(submissions).toEqual([id]);
 });
 
+test('browser quota failure does not block server-backed image generation', async ({ page }) => {
+  await openOutput(page); await createPreview(page);
+  await page.getByRole('checkbox', { name: /reviewed this composition/ }).check();
+  await page.getByRole('button', { name: 'Continue to video direction' }).click();
+  await page.getByRole('textbox', { name: 'Video instructions', exact: true }).fill('Server storage recovery test');
+  await page.evaluate(() => {
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (key === 'take-one-scene-v1') throw new DOMException('Quota exceeded', 'QuotaExceededError');
+      return setItem.call(this, key, value);
+    };
+  });
+  const submitted = page.waitForRequest(request => request.url().endsWith('/api/image-jobs') && request.method() === 'POST');
+  await page.getByRole('button', { name: 'Generate images', exact: true }).click();
+  const requestId = (await submitted).postDataJSON().id;
+  await expect(page.getByRole('img', { name: 'Image 1 - First frame', exact: true })).toBeVisible({ timeout: 15000 });
+  const project = await scene(page);
+  const saved = await page.evaluate(async id => (await fetch(`/api/projects/${id}`)).json(), project.id);
+  expect(saved.generation.imageRequest.id).toBe(requestId);
+  expect(saved.generation.imageAssetIds).toHaveLength(2);
+  await expect(page.getByRole('alert')).toBeHidden();
+});
+
 test('image provider failures offer a deliberate new request and preserve the composition', async ({ page }) => {
   await openOutput(page); await createPreview(page);
   await page.getByRole('checkbox', { name: 'I’ve reviewed this composition' }).check();
@@ -323,4 +346,19 @@ test('generates repeatedly from the optimized prompt and every upload without a 
     await expect(generate).toBeEnabled();
   }
   await page.screenshot({ path: 'test-results-output/unlimited-image-inputs.png', fullPage: true });
+});
+
+
+test('Veo selection persists and validates its duration before submission', async ({ page }) => {
+  await openOutput(page); await createPreview(page);
+  await page.getByRole('checkbox', { name: /reviewed this composition/ }).check();
+  await page.getByRole('button', { name: 'Continue to video direction' }).click();
+  await page.getByRole('textbox', { name: 'Video instructions' }).fill('A slow camera pan across the scene');
+  await page.getByRole('button', { name: 'Continue to generation' }).click();
+  await page.getByRole('combobox', { name: 'Video model' }).selectOption('veo');
+  await expect(page.getByRole('button', { name: 'Generate with Gemini Veo 3.1' })).toBeDisabled();
+  await expect(page.getByText('Veo needs a timeline of 4, 6 or 8 seconds.', { exact: false })).toBeVisible();
+  expect((await scene(page)).generation.videoModel).toBe('veo');
+  await page.getByRole('combobox', { name: 'Video model' }).selectOption('seedance');
+  await expect(page.getByRole('button', { name: 'Generate with Seedance' })).toBeEnabled();
 });

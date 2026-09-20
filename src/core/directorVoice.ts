@@ -8,13 +8,16 @@ export class DirectorVoice {
   private stream?: MediaStream;
   private source?: MediaStreamAudioSourceNode;
   private worklet?: AudioWorkletNode;
-  private playback = new Set<AudioBufferSourceNode>();
-  private nextAudio = 0;
   private stopped = false;
   private ready = false;
+  private demo = false;
+  private remoteMuted = false;
+  private inputLocked = false;
+  private utterance?: SpeechSynthesisUtterance;
   constructor(private onEvent: (event: VoiceEvent) => void, private status: (status: VoiceStatus) => void, private error: (message: string) => void) {}
-  async start(initial: { sessionId: string; messages: DirectorMessage[]; context: string; image?: string }) {
+  async start(initial: { sessionId: string; messages: DirectorMessage[]; context: string; image?: string; demo?: boolean }) {
     this.status('connecting');
+    this.demo = !!initial.demo; this.remoteMuted = this.demo;
     try {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || !window.AudioWorkletNode) throw new Error('Voice needs Chrome or Edge on localhost or HTTPS. You can still type.');
       this.audio = new AudioContext(); await this.audio.resume();
@@ -31,9 +34,10 @@ export class DirectorVoice {
       this.worklet.port.onmessage = ({ data }) => {
         if (!this.ready || this.stopped || socket.readyState !== WebSocket.OPEN) return;
         if (socket.bufferedAmount > 128000) { this.fail('Voice connection is too slow. Restart the microphone or continue typing.'); return; }
-        if (data.type === 'audio') socket.send(data.bytes);
+        if (data.type === 'audio') { if (!this.inputLocked) socket.send(data.bytes); }
         else if (data.type === 'activity') {
-          if (data.active) { this.interrupt(); this.onEvent({ type: 'speech-start' }); }
+          if (this.inputLocked) return;
+          if (data.active) { this.remoteMuted = this.demo; this.onEvent({ type: 'speech-start' }); }
           socket.send(JSON.stringify(data));
         }
       };
@@ -42,10 +46,10 @@ export class DirectorVoice {
         try {
           const message = JSON.parse(event.data) as VoiceEvent;
           if (message.type === 'ready') { this.ready = true; this.status('listening'); }
-          else if (message.type === 'reconnecting') { this.ready = false; this.interrupt(); this.status('reconnecting'); }
-          else if (message.type === 'audio' && typeof message.data === 'string') this.play(message.data);
-          else if (message.type === 'interrupted') this.interrupt();
+          else if (message.type === 'reconnecting') { this.ready = false; this.status('reconnecting'); }
           else if (message.type === 'error') this.fail(String(message.message));
+          const suppressRemoteOutput = this.remoteMuted && (message.type === 'audio' || message.type === 'turn-complete' || message.type === 'transcript' && message.role === 'assistant');
+          if (suppressRemoteOutput) return;
           this.onEvent(message);
         } catch { this.fail('Voice returned an unreadable response. Continue typing or reconnect.'); }
       };
@@ -56,22 +60,20 @@ export class DirectorVoice {
     }
   }
   send(message: unknown) { if (this.ready && this.socket?.readyState === WebSocket.OPEN) { this.socket.send(JSON.stringify(message)); return true; } return false; }
-  private play(encoded: string) {
-    if (!this.audio) return;
-    const raw = atob(encoded), bytes = Uint8Array.from(raw, char => char.charCodeAt(0));
-    if (bytes.byteLength % 2 || bytes.byteLength > 2_000_000) throw new Error('Invalid voice audio');
-    const view = new DataView(bytes.buffer), buffer = this.audio.createBuffer(1, bytes.length / 2, 24000), channel = buffer.getChannelData(0);
-    for (let i = 0; i < channel.length; i++) channel[i] = view.getInt16(i * 2, true) / 32768;
-    this.nextAudio = Math.max(this.nextAudio, this.audio.currentTime);
-    if (this.nextAudio - this.audio.currentTime > 30) { this.fail('Voice playback fell behind. Restart the microphone.'); return; }
-    const source = this.audio.createBufferSource(); source.buffer = buffer; source.connect(this.audio.destination); this.playback.add(source);
-    source.onended = () => { this.playback.delete(source); source.disconnect(); if (!this.playback.size && !this.stopped && this.ready) this.status('listening'); };
-    source.start(this.nextAudio); this.nextAudio += buffer.duration; this.status('speaking');
+  setInputLocked(locked: boolean) { this.inputLocked = locked; }
+  /** Compatibility fallback for cached demo responses when ElevenLabs is not configured. */
+  cachedReply(text: string) {
+    this.remoteMuted = true;
+    if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) { this.error('Speech is unavailable in this browser. The cached response is still shown in the chat.'); return; }
+    const utterance = new SpeechSynthesisUtterance(text); this.utterance = utterance;
+    utterance.onstart = () => { if (this.utterance === utterance) this.status('speaking'); };
+    utterance.onend = utterance.onerror = () => { if (this.utterance === utterance) { this.utterance = undefined; if (!this.stopped && this.ready) this.status('listening'); } };
+    window.speechSynthesis.speak(utterance);
   }
-  interrupt() { this.playback.forEach(source => { source.onended = null; source.stop(); source.disconnect(); }); this.playback.clear(); this.nextAudio = 0; if (this.ready && !this.stopped) this.status('listening'); }
   private fail(message: string) { if (this.stopped) return; this.error(message); this.stop(); }
   stop() {
-    if (this.stopped) return; this.stopped = true; this.ready = false; this.interrupt();
+    if (this.stopped) return; this.stopped = true; this.ready = false; this.inputLocked = false;
+    if (this.utterance) { this.utterance = undefined; window.speechSynthesis?.cancel(); }
     this.stream?.getTracks().forEach(track => track.stop()); this.worklet?.disconnect(); this.source?.disconnect();
     if (this.worklet) this.worklet.port.onmessage = null;
     void this.audio?.close().catch(() => {}); this.socket?.close(); this.status('off');

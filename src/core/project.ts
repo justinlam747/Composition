@@ -32,6 +32,7 @@ export interface SceneObject {
 }
 export interface ImageRequest { id: string; prompt: string; guideAssetId?: string; count?: number; paired?: boolean; referenceAssetIds?: string[] }
 export interface Generation {
+  videoModel?: 'seedance' | 'veo';
   guideAssetId: string; sourceSignature: string; jobId?: string; outputAssetId?: string; instructions?: string;
   imageRequest?: ImageRequest; imageAssetIds?: string[]; referenceAssetIds?: string[];
   imageSources?: Record<string, string>; baselineAssetId?: string;
@@ -77,6 +78,7 @@ export const BONES: BoneDefinition[] = [
 
 export const uid = () => crypto.randomUUID();
 export const HUMANOID_ID = 'humanoid';
+export const HUMANOID_DIMENSIONS: Vec3 = [.7, 1.9, .4];
 export const CAMERA_ID = '__shot_camera__';
 export function makeCamera(): ShotCamera {
   const position: Vec3 = [3.1, 2.1, 5.2];
@@ -86,9 +88,10 @@ export function makeCamera(): ShotCamera {
 export const hasTarget = (project: Project, id: string) => id === CAMERA_ID ? !!project.camera : project.objects.some(o => o.id === id && !o.hidden);
 export const primaryTarget = (project: Project) => project.objects.find(o => !o.hidden)?.id ?? (project.camera ? CAMERA_ID : HUMANOID_ID);
 export const hasCharacter = (project: Project) => project.objects.some(o => o.kind === 'humanoid' && !o.hidden);
+export const hasPrimaryCharacter = (project: Project) => project.objects.some(o => o.id === HUMANOID_ID && o.kind === 'humanoid' && !o.hidden);
 export function makeObject(kind: SceneObject['kind'], count = 0): SceneObject {
   return { id: kind === 'humanoid' ? HUMANOID_ID : uid(), kind, name: kind === 'humanoid' ? 'Mannequin' : `Box ${count + 1}`,
-    dimensions: kind === 'humanoid' ? [.7, 1.9, .4] : [1, 1, 1], position: kind === 'humanoid' ? [0, 0, 0] : [1.5 + count % 4 * 1.25, 0, -Math.floor(count / 4) * 1.25 || 0], rotation: [0, 0, 0], scale: [1, 1, 1], referenceAssetIds: [] };
+    dimensions: kind === 'humanoid' ? [...HUMANOID_DIMENSIONS] : [1, 1, 1], position: kind === 'humanoid' ? [0, 0, 0] : [1.5 + count % 4 * 1.25, 0, -Math.floor(count / 4) * 1.25 || 0], rotation: [0, 0, 0], scale: [1, 1, 1], referenceAssetIds: [] };
 }
 export const trackId = (target: string, channel: Channel) => `${target}:${channel}`;
 export const snapTime = (time: number, duration: number) => Math.round(Math.max(0, Math.min(duration, time)) * 30) / 30;
@@ -238,10 +241,11 @@ export function moveKey(project: Project, id: string, time: number): Project {
   return next;
 }
 export function seedIdle(project: Project): Project {
-  if (!project.objects.some(o => o.kind === 'humanoid') && project.objects.length >= 32) throw new Error('The scene is full. Delete a box before adding the demo humanoid.');
+  const hasPrimaryObject = project.objects.some(o => o.id === HUMANOID_ID && o.kind === 'humanoid');
+  if (!hasPrimaryObject && project.objects.length >= 32) throw new Error('The scene is full. Delete a box before adding the demo humanoid.');
   let next = { ...structuredClone(project), demo: true, name: project.name === 'Untitled take' ? 'A moment, held' : project.name };
-  if (!next.objects.some(o => o.kind === 'humanoid')) next.objects.push(makeObject('humanoid'));
-  next.objects = next.objects.map(o => o.kind === 'humanoid' ? { ...o, hidden: false } : o);
+  if (!hasPrimaryObject) next.objects.push(makeObject('humanoid'));
+  next.objects = next.objects.map(o => o.id === HUMANOID_ID ? { ...o, hidden: false } : o);
   next.tracks = next.tracks.filter(t => t.objectId !== HUMANOID_ID || t.target === 'model');
   if (next.clips) next.clips = next.clips.filter(clip => clip.objectId !== HUMANOID_ID);
   const poses: Record<string, Vec3[]> = {
@@ -281,7 +285,7 @@ export function validateProject(input: unknown): Project {
   for (const o of p.objects) {
     if (o?.geometry !== undefined && (o.kind !== 'box' || !propGeometrySchema.safeParse(o.geometry).success)) throw new Error('Invalid prop geometry.');
     if (!o || !validId(o.id) || o.id === CAMERA_ID || objects.has(o.id) || !['humanoid', 'box'].includes(o.kind) ||
-      (o.kind === 'humanoid' ? o.id !== HUMANOID_ID : o.id === HUMANOID_ID) || typeof o.name !== 'string' || !o.name.trim() || o.name.length > 120 ||
+      (o.kind === 'box' && o.id === HUMANOID_ID) || typeof o.name !== 'string' || !o.name.trim() || o.name.length > 120 ||
       !validVec(o.dimensions, .05, 20) || !validVec(o.position) || !validVec(o.rotation) || !validVec(o.scale, .05, 10) ||
       !Array.isArray(o.referenceAssetIds) || o.referenceAssetIds.length > 9 || !o.referenceAssetIds.every(validId) ||
       (o.hidden !== undefined && typeof o.hidden !== 'boolean') ||
@@ -289,7 +293,7 @@ export function validateProject(input: unknown): Project {
     objects.set(o.id, o);
   }
   const generationImages = new Set(Array.isArray(p.generation?.imageAssetIds) ? p.generation.imageAssetIds : []);
-  if (p.generation && (!validId(p.generation.guideAssetId) || typeof p.generation.sourceSignature !== 'string' || p.generation.sourceSignature.length > 100 ||
+  if (p.generation && ((p.generation.videoModel !== undefined && !['seedance', 'veo'].includes(p.generation.videoModel)) || !validId(p.generation.guideAssetId) || typeof p.generation.sourceSignature !== 'string' || p.generation.sourceSignature.length > 100 ||
     (p.generation.jobId !== undefined && !validId(p.generation.jobId)) || (p.generation.outputAssetId !== undefined && !validId(p.generation.outputAssetId)) ||
     (p.generation.imageRequest !== undefined && (!p.generation.imageRequest || !validId(p.generation.imageRequest.id) || typeof p.generation.imageRequest.prompt !== 'string' || !p.generation.imageRequest.prompt.trim() || p.generation.imageRequest.prompt.length > 4000 ||
       (p.generation.imageRequest.guideAssetId !== undefined && !validId(p.generation.imageRequest.guideAssetId)) || (p.generation.imageRequest.count !== undefined && (!Number.isSafeInteger(p.generation.imageRequest.count) || p.generation.imageRequest.count < 1)) || (p.generation.imageRequest.referenceAssetIds !== undefined && (!Array.isArray(p.generation.imageRequest.referenceAssetIds) || !p.generation.imageRequest.referenceAssetIds.every(validId))) || (p.generation.imageRequest.paired !== undefined && (typeof p.generation.imageRequest.paired !== 'boolean' || p.generation.imageRequest.paired && !p.generation.imageRequest.guideAssetId)))) ||
